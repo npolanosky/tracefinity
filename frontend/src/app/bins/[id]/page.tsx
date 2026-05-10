@@ -8,13 +8,14 @@ import { BinPreview3D } from '@/components/BinPreview3D'
 import { ToolBrowser } from '@/components/ToolBrowser'
 import { getBin, updateBin, generateBinStl, getBinStlUrl, getBinZipUrl, getBinThreemfUrl, getBinInsertUrl, getImageUrl, listTools, updateTool } from '@/lib/api'
 import { getDefaultBinConfig, resetDefaultBinConfig, saveDefaultBinConfig } from '@/lib/binDefaults'
+import { getSettings, saveSettings } from '@/lib/settings'
 import type { BinConfig, BinData, PlacedTool, TextLabel } from '@/types'
 import { Download, Loader2, Package, ChevronDown, Check } from 'lucide-react'
 import { Breadcrumb } from '@/components/Breadcrumb'
 import { Alert } from '@/components/Alert'
 import { useDebouncedSave } from '@/hooks/useDebouncedSave'
 import { useProjectSource } from '@/hooks/useProjectSource'
-import { GRID_UNIT } from '@/lib/constants'
+import { DEFAULT_GRID_UNIT, type SnapMode } from '@/lib/constants'
 
 function InfoBanner({ children }: { children: React.ReactNode }) {
   return (
@@ -22,6 +23,15 @@ function InfoBanner({ children }: { children: React.ReactNode }) {
       {children}
     </div>
   )
+}
+
+function withGridDefaults(c: BinConfig): BinConfig {
+  return {
+    ...c,
+    grid_unit_x_mm: c.grid_unit_x_mm ?? DEFAULT_GRID_UNIT,
+    grid_unit_y_mm: c.grid_unit_y_mm ?? DEFAULT_GRID_UNIT,
+    grid_unit_locked: c.grid_unit_locked ?? true,
+  }
 }
 
 export default function BinPage() {
@@ -60,7 +70,17 @@ export default function BinPage() {
   const [exportOpen, setExportOpen] = useState(false)
   const [defaultsStatus, setDefaultsStatus] = useState<string | null>(null)
   const defaultsStatusTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const [snapMode, setSnapModeState] = useState<SnapMode>('fixed-5')
   const exportRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setSnapModeState(getSettings().snapMode)
+  }, [])
+
+  const handleSnapModeChange = useCallback((m: SnapMode) => {
+    setSnapModeState(m)
+    saveSettings({ snapMode: m })
+  }, [])
 
   useEffect(() => {
     if (!exportOpen) return
@@ -100,7 +120,7 @@ export default function BinPage() {
         setPlacedTools(synced)
         setTextLabels(data.text_labels)
         setName(data.name || '')
-        setConfig(data.bin_config)
+        setConfig(withGridDefaults(data.bin_config))
         setSmoothedToolIds(new Set(tools.filter(t => t.smoothed).map(t => t.id)))
         setSmoothLevels(new Map(tools.map(t => [t.id, t.smooth_level])))
       } catch {
@@ -215,8 +235,10 @@ export default function BinPage() {
     const halfMargin = config.wall_thickness + config.cutout_clearance + 0.25
     const toolW = maxX - minX
     const toolH = maxY - minY
-    const needX = Math.max(1, Math.ceil((toolW + 2 * halfMargin) / GRID_UNIT))
-    const needY = Math.max(1, Math.ceil((toolH + 2 * halfMargin) / GRID_UNIT))
+    const gux = config.grid_unit_x_mm
+    const guy = config.grid_unit_y_mm
+    const needX = Math.max(1, Math.ceil((toolW + 2 * halfMargin) / gux))
+    const needY = Math.max(1, Math.ceil((toolH + 2 * halfMargin) / guy))
 
     const gridChanged = config.grid_x !== needX || config.grid_y !== needY
     if (gridChanged) {
@@ -224,8 +246,8 @@ export default function BinPage() {
     }
 
     // recentre tools if grid changed or tools are off-centre
-    const binW = (gridChanged ? needX : config.grid_x) * GRID_UNIT
-    const binH = (gridChanged ? needY : config.grid_y) * GRID_UNIT
+    const binW = (gridChanged ? needX : config.grid_x) * gux
+    const binH = (gridChanged ? needY : config.grid_y) * guy
     const toolCx = (minX + maxX) / 2
     const toolCy = (minY + maxY) / 2
     const dx = binW / 2 - toolCx
@@ -240,7 +262,7 @@ export default function BinPage() {
         ),
       })))
     }
-  }, [autoSize, isDragging, placedTools, config.grid_x, config.grid_y, config.wall_thickness, config.cutout_clearance])
+  }, [autoSize, isDragging, placedTools, config.grid_x, config.grid_y, config.grid_unit_x_mm, config.grid_unit_y_mm, config.wall_thickness, config.cutout_clearance])
 
   const handleToggleSmoothed = useCallback(async (toolId: string, smoothed: boolean) => {
     try {
@@ -274,16 +296,18 @@ export default function BinPage() {
     const toolH = maxY - minY
 
     const margin = 2 * config.wall_thickness + 2 * config.cutout_clearance + 0.5
-    const needX = Math.max(config.grid_x, Math.ceil((toolW + margin) / GRID_UNIT))
-    const needY = Math.max(config.grid_y, Math.ceil((toolH + margin) / GRID_UNIT))
+    const gux = config.grid_unit_x_mm
+    const guy = config.grid_unit_y_mm
+    const needX = Math.max(config.grid_x, Math.ceil((toolW + margin) / gux))
+    const needY = Math.max(config.grid_y, Math.ceil((toolH + margin) / guy))
 
     if (needX !== config.grid_x || needY !== config.grid_y) {
       setConfig(prev => ({ ...prev, grid_x: needX, grid_y: needY }))
     }
 
     // always centre the tool in the bin
-    const binW = needX * GRID_UNIT
-    const binH = needY * GRID_UNIT
+    const binW = needX * gux
+    const binH = needY * guy
     const toolCx = (minX + maxX) / 2
     const toolCy = (minY + maxY) / 2
     const dx = binW / 2 - toolCx
@@ -298,7 +322,7 @@ export default function BinPage() {
     }
 
     setPlacedTools(prev => [...prev, placed])
-  }, [config.grid_x, config.grid_y])
+  }, [config.grid_x, config.grid_y, config.grid_unit_x_mm, config.grid_unit_y_mm, config.wall_thickness, config.cutout_clearance])
 
   function handleDownload() {
     window.open(getBinStlUrl(binId), '_blank')
@@ -355,8 +379,8 @@ export default function BinPage() {
   const stlUrlWithVersion = stlUrl ? `${stlUrl}?v=${stlVersion}` : null
   const splitUrlsWithVersion = stlUrls.length > 0 ? stlUrls.map(u => `${u}?v=${stlVersion}`) : null
   const insertUrlWithVersion = insertStlUrl ? `${insertStlUrl}?v=${stlVersion}` : null
-  const binW = config.grid_x * GRID_UNIT
-  const binH = config.grid_y * GRID_UNIT
+  const binW = config.grid_x * config.grid_unit_x_mm
+  const binH = config.grid_y * config.grid_unit_y_mm
   const hasExports = stlUrl || zipUrl || threemfUrl || insertStlUrl
 
   return (
@@ -373,7 +397,14 @@ export default function BinPage() {
               {saving && <Loader2 className="w-3 h-3 animate-spin text-text-muted flex-shrink-0" />}
               {saved && <Check className="w-3 h-3 text-green-400 flex-shrink-0" />}
             </div>
-            <BinConfigurator config={config} onChange={setConfig} autoSize={autoSize} onAutoSizeChange={setAutoSize} />
+            <BinConfigurator
+              config={config}
+              onChange={setConfig}
+              autoSize={autoSize}
+              onAutoSizeChange={setAutoSize}
+              snapMode={snapMode}
+              onSnapModeChange={handleSnapModeChange}
+            />
             <div className="mt-3 border-t border-border pt-3 space-y-1.5">
               <div className="flex gap-1.5">
                 <button
@@ -498,6 +529,9 @@ export default function BinPage() {
                 onTextLabelsChange={setTextLabels}
                 gridX={config.grid_x}
                 gridY={config.grid_y}
+                gridUnitX={config.grid_unit_x_mm}
+                gridUnitY={config.grid_unit_y_mm}
+                snapMode={snapMode}
                 wallThickness={config.wall_thickness}
                 defaultCutoutDepth={config.cutout_depth}
                 maxCutoutDepth={calcMaxCutoutDepth(config.height_units, config.stacking_lip)}

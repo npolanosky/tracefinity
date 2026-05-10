@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import type { PlacedTool, TextLabel } from '@/types'
 import { snapToGrid as snapToGridUtil } from '@/lib/svg'
-import { GRID_UNIT, DISPLAY_SCALE, SNAP_GRID } from '@/lib/constants'
+import { DEFAULT_GRID_UNIT, DISPLAY_SCALE, SNAP_GRID, resolveSnap, type SnapMode } from '@/lib/constants'
 import { BinEditorToolbar } from '@/components/BinEditorToolbar'
 import { BinEditorCanvas } from '@/components/BinEditorCanvas'
 
@@ -14,6 +14,9 @@ interface Props {
   onTextLabelsChange: (labels: TextLabel[]) => void
   gridX: number
   gridY: number
+  gridUnitX?: number
+  gridUnitY?: number
+  snapMode?: SnapMode
   wallThickness: number
   defaultCutoutDepth: number
   maxCutoutDepth: number
@@ -47,6 +50,9 @@ export function BinEditor({
   onTextLabelsChange,
   gridX,
   gridY,
+  gridUnitX = DEFAULT_GRID_UNIT,
+  gridUnitY = DEFAULT_GRID_UNIT,
+  snapMode = 'fixed-5',
   wallThickness,
   defaultCutoutDepth,
   maxCutoutDepth,
@@ -82,8 +88,9 @@ export function BinEditor({
 
   useEffect(() => { onDraggingChange?.(dragging !== null) }, [dragging, onDraggingChange])
 
-  const binWidthMm = gridX * GRID_UNIT
-  const binHeightMm = gridY * GRID_UNIT
+  const binWidthMm = gridX * gridUnitX
+  const binHeightMm = gridY * gridUnitY
+  const snapStepMm = resolveSnap(snapMode, Math.min(gridUnitX, gridUnitY))
   const displayWidth = binWidthMm * DISPLAY_SCALE
   const displayHeight = binHeightMm * DISPLAY_SCALE
 
@@ -143,8 +150,8 @@ export function BinEditor({
 
   const snapToGrid = useCallback((v: number) => {
     if (!snapEnabled) return v
-    return snapToGridUtil(v, snapGrid)
-  }, [snapEnabled, snapGrid])
+    return snapToGridUtil(v, snapStepMm || SNAP_GRID)
+  }, [snapEnabled, snapStepMm])
 
   const handleToolMouseDown = (toolId: string) => (e: React.MouseEvent) => {
     if (activeTool === 'text') return
@@ -539,6 +546,8 @@ export function BinEditor({
         displayHeight={displayHeight}
         gridX={gridX}
         gridY={gridY}
+        gridUnitX={gridUnitX}
+        gridUnitY={gridUnitY}
         wallThickness={wallThickness}
         placedTools={placedTools}
         selection={selection}

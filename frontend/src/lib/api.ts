@@ -30,11 +30,11 @@ export class ApiError extends Error {
   }
 }
 
-// empty string means use relative URLs (same origin, for Docker)
-// undefined means use default dev URL
-const API_URL = process.env.NEXT_PUBLIC_API_URL === ''
-  ? ''
-  : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000')
+// Use relative URLs by default. next.config.js `rewrites()` proxies /api/* and
+// /storage/* to BACKEND_URL in dev (defaults to localhost:8000) and nginx routes
+// the same paths in the Docker container. Override with NEXT_PUBLIC_API_URL only
+// when the frontend talks to a backend on a different origin (no rewrite layer).
+const API_URL = process.env.NEXT_PUBLIC_API_URL || ''
 
 const NETWORK_ERROR_EVENT = 'tracefinity:api-network-error'
 

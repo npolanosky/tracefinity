@@ -101,6 +101,9 @@ export interface GenerateResponse {
 export interface BinDefaults {
   grid_x: number
   grid_y: number
+  grid_unit_x_mm: number
+  grid_unit_y_mm: number
+  grid_unit_locked: boolean
   height_units: number
   magnets: boolean
   magnet_diameter: number
