@@ -49,6 +49,19 @@ RUN pip uninstall -y onnxruntime \
 
 COPY backend/ ./backend/
 
+# Pre-warm the model caches so cold starts skip ~30s of GitHub downloads.
+# rembg models land in /root/.u2net/, transparent_background's InSPyReNet
+# weights in /root/.transparent-background/. Adds ~500MB to image size in
+# exchange for boots that take ~30s instead of ~70s on a fresh container.
+RUN cd /app/backend && python -c "\
+from rembg import new_session; \
+print('warming u2netp...'); new_session('u2netp'); \
+print('warming isnet-general-use...'); new_session('isnet-general-use'); \
+print('warming birefnet-general-lite...'); new_session('birefnet-general-lite'); \
+print('warming inspyrenet...'); \
+from transparent_background import Remover; Remover(mode='base', device='cpu'); \
+" && echo 'cache sizes:' && du -sh /root/.u2net /root/.transparent-background 2>/dev/null || true
+
 # frontend (built)
 COPY --from=frontend-build /frontend/.next ./.next
 COPY --from=frontend-build /frontend/public ./public
@@ -71,6 +84,16 @@ COPY <<'NGINX_EOF' /etc/nginx/sites-enabled/tracefinity.conf
 server {
     listen 3000;
     client_max_body_size 25m;
+
+    # boot status file: written by the backend at import time and served by
+    # nginx so the frontend can show progress before uvicorn binds to :8000.
+    # Always no-cache; missing file is treated as "not ready yet".
+    location = /boot.json {
+        alias /tmp/tracefinity_boot.json;
+        default_type application/json;
+        add_header Cache-Control "no-store, max-age=0";
+        try_files $uri =503;
+    }
 
     # api + storage -> uvicorn (120s timeout for STL generation)
     location /api/ {

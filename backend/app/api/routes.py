@@ -136,7 +136,42 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", "
 MAX_UPLOAD_DIM = 2048
 
 
+# Boot-phase reporting --------------------------------------------------------
+# Writes to /tmp/tracefinity_boot.json which nginx serves at /boot.json. The
+# frontend polls that file directly so it can show progress *during* the
+# uvicorn import block (when /api/* is unreachable because the worker hasn't
+# bound the socket yet).
+import time as _time
+
+_BOOT_FILE = "/tmp/tracefinity_boot.json"
+_BOOT_TMP = "/tmp/.tracefinity_boot.json.tmp"
+_BOOT_STARTED_AT = _time.time()
+_BOOT_LOADED: list[str] = []
+
+
+def _set_boot_phase(phase: str, ready: bool = False, **extras) -> None:
+    """Atomically rewrite the boot status file."""
+    state = {
+        "phase": phase,
+        "ready": ready,
+        "started_at": int(_BOOT_STARTED_AT * 1000),
+        "ts": int(_time.time() * 1000),
+        "loaded": list(_BOOT_LOADED),
+        **extras,
+    }
+    try:
+        with open(_BOOT_TMP, "w") as f:
+            json.dump(state, f)
+        os.replace(_BOOT_TMP, _BOOT_FILE)
+    except OSError:
+        # /tmp may be read-only in some envs; phase reporting is best-effort.
+        pass
+
+
+_set_boot_phase("starting")
+_set_boot_phase("loading paper detector", current="paper-detector")
 image_processor = ImageProcessor()
+_BOOT_LOADED.append("paper-detector")
 
 # one AITracer per local model so each can cache its loaded model
 _tracers: dict[str, AITracer] = {}
@@ -170,6 +205,15 @@ def _get_tracer(tracer_id: str | None = None) -> AITracer:
         else:
             _tracers[tid] = AITracer(saliency_tracer=tid)
     return _tracers[tid]
+
+# pre-load all configured tracers at startup, reporting per-tracer phase
+_pending = list(settings.available_tracers)
+for _tid in settings.available_tracers:
+    _set_boot_phase(f"loading {_tid}", current=_tid, pending=_pending)
+    _get_tracer(_tid)
+    _BOOT_LOADED.append(_tid)
+    _pending = _pending[1:]
+_set_boot_phase("ready", ready=True)
 
 polygon_scaler = PolygonScaler()
 stl_generator = ManifoldSTLGenerator()
@@ -487,6 +531,18 @@ def _run_generate(
         insert_stl_url=insert_stl_url,
         warning=warning,
     )
+
+
+@router.get("/ready")
+async def ready():
+    """Liveness probe. By the time uvicorn binds to :8000 the module-level
+    tracer pre-load has finished, so a 200 response here always means ready.
+    Frontend should prefer /boot.json (served by nginx) for progress while
+    the backend is still starting."""
+    return {
+        "ready": True,
+        "tracers": list(_tracers.keys()),
+    }
 
 
 @router.post("/upload", response_model=UploadResponse)

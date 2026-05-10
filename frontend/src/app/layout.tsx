@@ -11,6 +11,7 @@ import { ThemeToggle } from '@/components/ThemeToggle'
 import { GuidedTour } from '@/components/GuidedTour'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { IconButton } from '@/components/IconButton'
+import { ReadinessGate } from '@/components/ReadinessGate'
 
 export default function RootLayout({
   children,
@@ -50,7 +51,9 @@ export default function RootLayout({
           </header>
           <main className={isFullBleed ? '' : 'px-4 py-4'}>
             <ErrorBoundary>
-              {children}
+              <ReadinessGate>
+                {children}
+              </ReadinessGate>
             </ErrorBoundary>
           </main>
           <GuidedTour open={showHelp} onClose={() => setShowHelp(false)} />

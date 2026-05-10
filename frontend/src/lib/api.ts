@@ -36,17 +36,34 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL === ''
   ? ''
   : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000')
 
+const NETWORK_ERROR_EVENT = 'tracefinity:api-network-error'
+
+function notifyNetworkError(err: unknown) {
+  // TypeError on fetch indicates the request never reached a peer (DNS, ECONN*,
+  // CORS preflight rejection). Surface to the readiness gate so it can re-probe.
+  if (typeof window === 'undefined') return
+  if (err instanceof TypeError) {
+    window.dispatchEvent(new Event(NETWORK_ERROR_EVENT))
+  }
+}
+
 async function fetchApi<T>(
   path: string,
   options?: RequestInit
 ): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-  })
+  let res: Response
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers,
+      },
+    })
+  } catch (err) {
+    notifyNetworkError(err)
+    throw err
+  }
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: 'request failed' }))
@@ -57,7 +74,13 @@ async function fetchApi<T>(
 }
 
 async function fetchForm<T>(path: string, body: FormData): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, { method: 'POST', body })
+  let res: Response
+  try {
+    res = await fetch(`${API_URL}${path}`, { method: 'POST', body })
+  } catch (err) {
+    notifyNetworkError(err)
+    throw err
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'request failed' }))
     throw new ApiError(err.detail || 'request failed', res.status)
