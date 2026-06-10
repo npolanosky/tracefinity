@@ -61,30 +61,29 @@ export function ReadinessGate({ children }: { children: React.ReactNode }) {
       let nextDelay = POLL_INTERVAL_MS
       let success = false
 
-      // /boot.json is served by nginx and is always reachable once the
-      // container is up. /api/ready confirms uvicorn has bound the socket.
+      // /boot.json is served by nginx in the container to surface startup
+      // progress. It does not exist under `npm run dev` / from-source, so it's
+      // best-effort: we use it only to populate the progress display.
       try {
         const res = await fetchWithTimeout('/boot.json', FETCH_TIMEOUT_MS)
-        if (res.ok) {
-          const data = await res.json() as BootInfo
-          setBoot(data)
-          if (data.ready) {
-            // Confirm uvicorn is actually answering before we drop the splash.
-            try {
-              const ready = await fetchWithTimeout('/api/ready', FETCH_TIMEOUT_MS)
-              if (ready.ok) {
-                failsRef.current = 0
-                setMode('ready')
-                nextDelay = HEARTBEAT_INTERVAL_MS
-                success = true
-              }
-            } catch { /* fall through to retry */ }
-          }
-        } else if (res.status === 503) {
-          // boot.json missing — backend hasn't written it yet, just retry.
+        if (res.ok) setBoot(await res.json() as BootInfo)
+      } catch {
+        // boot.json unreachable — fall back to /api/ready below.
+      }
+
+      // /api/ready is the authoritative signal: it only answers 200 once
+      // uvicorn has bound, which (per the backend) means the tracer pre-load
+      // is complete. This works with or without nginx in front.
+      try {
+        const ready = await fetchWithTimeout('/api/ready', FETCH_TIMEOUT_MS)
+        if (ready.ok) {
+          failsRef.current = 0
+          setMode('ready')
+          nextDelay = HEARTBEAT_INTERVAL_MS
+          success = true
         }
       } catch {
-        // network error reaching nginx — container is probably down.
+        // backend not answering yet — retry.
       }
 
       if (!success) {
