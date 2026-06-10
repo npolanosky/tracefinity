@@ -6,10 +6,18 @@ export interface UserSettings {
   bedSize: number
   defaultPaperSize: PaperSize
   snapMode: SnapMode
+  autoArrange: boolean
+  arrangeRotation: boolean
   binDefaults?: Partial<BinDefaults>
 }
 
-const DEFAULTS: UserSettings = { bedSize: 256, defaultPaperSize: DEFAULT_PAPER_SIZE, snapMode: 'fixed-5' }
+const DEFAULTS: UserSettings = {
+  bedSize: 256,
+  defaultPaperSize: DEFAULT_PAPER_SIZE,
+  snapMode: 'fixed-5',
+  autoArrange: false,
+  arrangeRotation: true,
+}
 const KEY = 'tracefinity-settings'
 
 export function getSettings(): UserSettings {

@@ -10,7 +10,8 @@ import { getBin, updateBin, generateBinStl, getBinStlUrl, getBinZipUrl, getBinTh
 import { getDefaultBinConfig, resetDefaultBinConfig, saveDefaultBinConfig } from '@/lib/binDefaults'
 import { getSettings, saveSettings } from '@/lib/settings'
 import type { BinConfig, BinData, PlacedTool, TextLabel } from '@/types'
-import { Download, Loader2, Package, ChevronDown, Check } from 'lucide-react'
+import { Download, Loader2, Package, ChevronDown, Check, LayoutGrid, RotateCw, Sparkles } from 'lucide-react'
+import { arrangeTools } from '@/lib/packing'
 import { Breadcrumb } from '@/components/Breadcrumb'
 import { Alert } from '@/components/Alert'
 import { useDebouncedSave } from '@/hooks/useDebouncedSave'
@@ -71,10 +72,26 @@ export default function BinPage() {
   const [defaultsStatus, setDefaultsStatus] = useState<string | null>(null)
   const defaultsStatusTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [snapMode, setSnapModeState] = useState<SnapMode>('fixed-5')
+  const [autoArrange, setAutoArrangeState] = useState(false)
+  const [arrangeRotation, setArrangeRotationState] = useState(true)
+  const [layoutWarning, setLayoutWarning] = useState<string | null>(null)
   const exportRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    setSnapModeState(getSettings().snapMode)
+    const s = getSettings()
+    setSnapModeState(s.snapMode)
+    setAutoArrangeState(s.autoArrange)
+    setArrangeRotationState(s.arrangeRotation)
+  }, [])
+
+  const handleAutoArrangeChange = useCallback((v: boolean) => {
+    setAutoArrangeState(v)
+    saveSettings({ autoArrange: v })
+  }, [])
+
+  const handleArrangeRotationChange = useCallback((v: boolean) => {
+    setArrangeRotationState(v)
+    saveSettings({ arrangeRotation: v })
   }, [])
 
   const handleSnapModeChange = useCallback((m: SnapMode) => {
@@ -284,7 +301,23 @@ export default function BinPage() {
     }, 300)
   }, [])
 
+  // pack all placed tools into the smallest grid footprint
+  const runArrange = useCallback((tools: PlacedTool[]) => {
+    const result = arrangeTools(tools, config, arrangeRotation)
+    if (!result) return false
+    setPlacedTools(result.tools)
+    setConfig(prev => (prev.grid_x === result.gridX && prev.grid_y === result.gridY
+      ? prev
+      : { ...prev, grid_x: result.gridX, grid_y: result.gridY }))
+    setLayoutWarning(result.unplacedIds.length > 0
+      ? `${result.unplacedIds.length} tool${result.unplacedIds.length !== 1 ? 's' : ''} did not fit even at ${result.gridX}x${result.gridY} and kept ${result.unplacedIds.length !== 1 ? 'their' : 'its'} position`
+      : null)
+    return true
+  }, [config, arrangeRotation])
+
   const handleAddTool = useCallback((tool: PlacedTool) => {
+    if (autoArrange && runArrange([...placedTools, tool])) return
+
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
     for (const p of tool.points) {
       minX = Math.min(minX, p.x)
@@ -322,7 +355,7 @@ export default function BinPage() {
     }
 
     setPlacedTools(prev => [...prev, placed])
-  }, [config.grid_x, config.grid_y, config.grid_unit_x_mm, config.grid_unit_y_mm, config.wall_thickness, config.cutout_clearance])
+  }, [autoArrange, runArrange, placedTools, config.grid_x, config.grid_y, config.grid_unit_x_mm, config.grid_unit_y_mm, config.wall_thickness, config.cutout_clearance])
 
   function handleDownload() {
     window.open(getBinStlUrl(binId), '_blank')
@@ -445,6 +478,9 @@ export default function BinPage() {
           {warning && (
             <InfoBanner>{warning}</InfoBanner>
           )}
+          {layoutWarning && (
+            <InfoBanner>{layoutWarning}</InfoBanner>
+          )}
           {splitCount > 1 && (
             <InfoBanner>Split into {splitCount} pieces</InfoBanner>
           )}
@@ -514,6 +550,39 @@ export default function BinPage() {
             layout="horizontal"
             projectId={projectSource.projectId}
             currentToolIds={placedTools.map(tool => tool.tool_id)}
+            headerExtra={
+              <div className="flex items-center gap-1 ml-2">
+                <button
+                  onClick={() => handleAutoArrangeChange(!autoArrange)}
+                  className={`px-2 py-0.5 rounded-[7px] text-[10px] flex items-center gap-1 transition-colors cursor-pointer ${
+                    autoArrange ? 'bg-accent-muted text-accent' : 'hover:bg-border/50 text-text-muted'
+                  }`}
+                  title="Re-pack all tools into the smallest grid whenever one is added"
+                >
+                  <LayoutGrid className="w-3 h-3" />
+                  Auto-arrange
+                </button>
+                <button
+                  onClick={() => handleArrangeRotationChange(!arrangeRotation)}
+                  className={`px-2 py-0.5 rounded-[7px] text-[10px] flex items-center gap-1 transition-colors cursor-pointer ${
+                    arrangeRotation ? 'bg-accent-muted text-accent' : 'hover:bg-border/50 text-text-muted'
+                  }`}
+                  title="Allow 90-degree rotation when arranging"
+                >
+                  <RotateCw className="w-3 h-3" />
+                  Rotate
+                </button>
+                <button
+                  onClick={() => runArrange(placedTools)}
+                  disabled={placedTools.length === 0}
+                  className="px-2 py-0.5 rounded-[7px] text-[10px] flex items-center gap-1 transition-colors cursor-pointer hover:bg-border/50 text-text-muted disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="Pack the current tools into the smallest grid now"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  Arrange
+                </button>
+              </div>
+            }
           />
         </div>
 
