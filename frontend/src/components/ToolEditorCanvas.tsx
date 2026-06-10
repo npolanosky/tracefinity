@@ -7,6 +7,7 @@ import { polygonPathData, smoothPathData } from '@/lib/svg'
 import { DISPLAY_SCALE } from '@/lib/constants'
 import { isRectangularCutout } from '@/lib/cutouts'
 import { CutoutOverlay } from '@/components/CutoutOverlay'
+import { MeasurementOverlay } from '@/components/MeasurementOverlay'
 import type { EditMode, Selection } from '@/components/ToolEditorToolbar'
 
 interface Props {
@@ -31,6 +32,7 @@ interface Props {
   displayPoints: Point[]
   smoothed: boolean
   interiorRings?: Point[][]
+  showMeasurements?: boolean
 
   // edge/vertex interactions
   points: Point[]
@@ -59,7 +61,7 @@ export function ToolEditorCanvas({
   svgRef, zvbX, zvbY, zvbW, zvbH, isCutoutMode,
   handleBackgroundClick, handleSvgMouseDown,
   gridMinX, gridMaxX, gridMinY, gridMaxY, gridStep, zoom,
-  displayPoints, smoothed, interiorRings,
+  displayPoints, smoothed, interiorRings, showMeasurements,
   points, editMode, selection,
   handleEdgeClick, handleVertexMouseDown,
   displayHoles, handleHoleMouseDown, handleResizeMouseDown, handleHoleRotateMouseDown,
@@ -177,6 +179,15 @@ export function ToolEditorCanvas({
               </g>
             )
           })()}
+
+          {showMeasurements && (
+            <MeasurementOverlay
+              points={displayPoints.map(p => ({ x: p.x * DISPLAY_SCALE, y: p.y * DISPLAY_SCALE }))}
+              holes={interiorRings?.map(ring => ring.map(p => ({ x: p.x * DISPLAY_SCALE, y: p.y * DISPLAY_SCALE })))}
+              mmPerUnit={1 / DISPLAY_SCALE}
+              uiScale={zvbW / 800}
+            />
+          )}
 
           {/* per-ring hit areas for fill-ring mode */}
           {editMode === 'fill-ring' && interiorRings?.map((ring, idx) => {

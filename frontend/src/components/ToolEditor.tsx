@@ -75,6 +75,7 @@ export function ToolEditor({ points, fingerHoles, interiorRings, smoothed, smoot
   // session-scoped "most accurate available" reference the slider re-derives from
   const baseRef = useRef<Point[] | null>(null)
   if (baseRef.current === null && points.length > 0) baseRef.current = points
+  const [showMeasurements, setShowMeasurements] = useState(false)
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [cutoutOpen, setCutoutOpen] = useState(false)
@@ -821,6 +822,7 @@ export function ToolEditor({ points, fingerHoles, interiorRings, smoothed, smoot
         displayPoints={displayPoints}
         smoothed={smoothed}
         interiorRings={displayRings}
+        showMeasurements={showMeasurements}
         points={points}
         editMode={editMode}
         selection={selection}
@@ -867,6 +869,8 @@ export function ToolEditor({ points, fingerHoles, interiorRings, smoothed, smoot
           onSimplifyCommit={commitSimplify}
           simplifyDisabled={mirrorMode}
           nodeCount={points.length}
+          showMeasurements={showMeasurements}
+          setShowMeasurements={setShowMeasurements}
           canUndo={canUndo}
           canRedo={canRedo}
           handleUndo={handleUndo}

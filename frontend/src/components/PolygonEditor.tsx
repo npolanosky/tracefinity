@@ -2,9 +2,10 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import type { Point, Polygon } from '@/types'
-import { Undo2, Redo2, Trash2, Plus, Minus, Move } from 'lucide-react'
+import { Undo2, Redo2, Trash2, Plus, Minus, Move, Ruler } from 'lucide-react'
 import { polygonPathData } from '@/lib/svg'
 import { useHistory } from '@/hooks/useHistory'
+import { MeasurementOverlay } from '@/components/MeasurementOverlay'
 
 interface Props {
   imageUrl: string
@@ -15,6 +16,8 @@ interface Props {
   onIncludedChange?: (ids: Set<string>) => void
   hovered?: string | null
   onHoveredChange?: (id: string | null) => void
+  /** mm per image px (session.scale_factor); enables the measurement toggle */
+  scaleFactor?: number | null
 }
 // base sizes for SVG UI elements, designed for ~800px viewBox width
 const BASE_VIEW_WIDTH = 800
@@ -33,6 +36,7 @@ export function PolygonEditor({
   onIncludedChange,
   hovered,
   onHoveredChange,
+  scaleFactor,
 }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -54,6 +58,7 @@ export function PolygonEditor({
 
   const [editMode, setEditMode] = useState<EditMode>('select')
   const [dragging, setDragging] = useState<DragState>(null)
+  const [showMeasurements, setShowMeasurements] = useState(false)
 
   const { set: pushHistory, undo: handleUndo, redo: handleRedo, canUndo, canRedo } = useHistory<Polygon[]>(
     polygons,
@@ -353,6 +358,23 @@ export function PolygonEditor({
             </button>
           </div>
 
+          {scaleFactor != null && (
+            <>
+              <div className="h-6 w-px bg-border-subtle" />
+              <button
+                onClick={() => setShowMeasurements(!showMeasurements)}
+                className={`p-2 rounded transition-colors cursor-pointer ${
+                  showMeasurements
+                    ? 'bg-accent-muted text-accent'
+                    : 'hover:bg-border text-text-secondary'
+                }`}
+                title="Show edge lengths and corner angles"
+              >
+                <Ruler className="w-5 h-5" />
+              </button>
+            </>
+          )}
+
           <span className="text-sm text-text-muted">
             {(editMode === 'select' || editMode === 'vertex') && !activeId && 'Click outlines to select tools'}
             {(editMode === 'select' || editMode === 'vertex') && activeId && 'Drag vertices to adjust the outline'}
@@ -486,6 +508,15 @@ export function PolygonEditor({
                       />
                     </g>
                   ))}
+
+                {isActive && showMeasurements && scaleFactor != null && (
+                  <MeasurementOverlay
+                    points={poly.points}
+                    holes={poly.interior_rings}
+                    mmPerUnit={scaleFactor}
+                    uiScale={uiScale}
+                  />
+                )}
 
               </g>
             )

@@ -153,6 +153,8 @@ export default function TracePage() {
       const result = await setCorners(sessionId, corners, paperSize)
       setCorrectedImageUrl(result.corrected_image_url)
       setImageVersion(Date.now())
+      // keep scale_factor current so the measurement overlay works without a reload
+      setSession((s) => (s ? { ...s, scale_factor: result.scale_factor } : s))
 
       if (singleTracer && tracers.length === 1) {
         // single tracer: trace immediately without changing step
@@ -731,6 +733,7 @@ export default function TracePage() {
             onIncludedChange={step === 'edit' ? setIncludedPolygons : undefined}
             hovered={step === 'edit' ? hoveredPolygon : undefined}
             onHoveredChange={step === 'edit' ? setHoveredPolygon : undefined}
+            scaleFactor={session?.scale_factor}
           />
         )}
       </div>
