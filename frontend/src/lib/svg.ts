@@ -129,6 +129,11 @@ export function snapToGrid(v: number, grid: number): number {
   return Math.round(v / grid) * grid
 }
 
+/** constrain a drag delta to its dominant cardinal axis (Shift-drag) */
+export function axisLock(dx: number, dy: number): { dx: number; dy: number } {
+  return Math.abs(dx) >= Math.abs(dy) ? { dx, dy: 0 } : { dx: 0, dy }
+}
+
 // --- measurement geometry ---
 
 export function signedArea(pts: Point[]): number {

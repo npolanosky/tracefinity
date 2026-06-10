@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 import type { PlacedTool, TextLabel } from '@/types'
-import { snapToGrid as snapToGridUtil } from '@/lib/svg'
+import { snapToGrid as snapToGridUtil, axisLock } from '@/lib/svg'
 import { DEFAULT_GRID_UNIT, DISPLAY_SCALE, SNAP_GRID, resolveSnap, type SnapMode } from '@/lib/constants'
 import { BinEditorToolbar } from '@/components/BinEditorToolbar'
 import { BinEditorCanvas } from '@/components/BinEditorCanvas'
@@ -282,6 +282,7 @@ export function BinEditor({
     if (!dragging) return
     const clientX = e.clientX
     const clientY = e.clientY
+    const shiftKey = e.shiftKey
 
     if (rafRef.current) cancelAnimationFrame(rafRef.current)
     rafRef.current = requestAnimationFrame(() => {
@@ -295,10 +296,12 @@ export function BinEditor({
       if (dragging.type === 'tool') {
         const origCenterX = dragging.origPoints.reduce((sum, p) => sum + p.x, 0) / dragging.origPoints.length
         const origCenterY = dragging.origPoints.reduce((sum, p) => sum + p.y, 0) / dragging.origPoints.length
-        const rawDx = pos.x - dragging.startX
-        const rawDy = pos.y - dragging.startY
-        const newCenterX = snapToGrid(origCenterX + rawDx)
-        const newCenterY = snapToGrid(origCenterY + rawDy)
+        let rawDx = pos.x - dragging.startX
+        let rawDy = pos.y - dragging.startY
+        if (shiftKey) ({ dx: rawDx, dy: rawDy } = axisLock(rawDx, rawDy))
+        // the shift-locked axis stays exactly put, even off-grid
+        const newCenterX = shiftKey && rawDx === 0 ? origCenterX : snapToGrid(origCenterX + rawDx)
+        const newCenterY = shiftKey && rawDy === 0 ? origCenterY : snapToGrid(origCenterY + rawDy)
         const dx = newCenterX - origCenterX
         const dy = newCenterY - origCenterY
         const updated = currentTools.map(tool => {

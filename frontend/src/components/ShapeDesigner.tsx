@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { Undo2, Redo2, Magnet } from 'lucide-react'
 import type { Point, ToolShape } from '@/types'
 import { DISPLAY_SCALE, ZOOM_FACTOR } from '@/lib/constants'
+import { axisLock } from '@/lib/svg'
 import { rotatePoint, shapeBounds } from '@/lib/shapes'
 import { snapShapePosition, snapRotation, type SnapIndicator } from '@/lib/shapeSnap'
 import { useHistory } from '@/hooks/useHistory'
@@ -253,13 +254,23 @@ export function ShapeDesigner({
     const base = shapesRef.current
 
     if (dragging.type === 'shape') {
-      const candX = dragging.orig.x + (mm.x - dragging.startMm.x)
-      const candY = dragging.orig.y + (mm.y - dragging.startMm.y)
-      let next = { x: candX, y: candY }
+      let dx = mm.x - dragging.startMm.x
+      let dy = mm.y - dragging.startMm.y
+      let next = { x: dragging.orig.x + dx, y: dragging.orig.y + dy }
       let indicator: SnapIndicator | null = null
-      if (!e.altKey && !dragging.alt) {
+      if (e.shiftKey) {
+        // shift locks to the dominant cardinal axis; grid still snaps the
+        // free axis (unless Alt), the locked axis stays exactly put
+        ;({ dx, dy } = axisLock(dx, dy))
+        const snapFree = (v: number) => (e.altKey || !grid ? v : Math.round(v / grid) * grid)
+        next = {
+          x: dx === 0 ? dragging.orig.x : snapFree(dragging.orig.x + dx),
+          y: dy === 0 ? dragging.orig.y : snapFree(dragging.orig.y + dy),
+        }
+        indicator = dx === 0 ? { axisX: dragging.orig.x } : { axisY: dragging.orig.y }
+      } else if (!e.altKey && !dragging.alt) {
         const others = base.filter((s) => s.id !== dragging.id)
-        const snapped = snapShapePosition(dragging.orig, candX, candY, others, grid || null, thresholdRef.current())
+        const snapped = snapShapePosition(dragging.orig, next.x, next.y, others, grid || null, thresholdRef.current())
         next = { x: snapped.x, y: snapped.y }
         indicator = snapped.indicator
       }
@@ -370,7 +381,7 @@ export function ShapeDesigner({
           </button>
 
           <span className="text-[10px] text-text-muted ml-1 hidden md:inline">
-            Alt = no snap · Space/middle-drag = pan · Scroll = zoom
+            Shift = axis lock · Alt = no snap · Space/middle-drag = pan · Scroll = zoom
           </span>
         </div>
       </div>

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import type { Point, Polygon } from '@/types'
 import { Undo2, Redo2, Trash2, Plus, Minus, Move, Ruler } from 'lucide-react'
-import { polygonPathData } from '@/lib/svg'
+import { polygonPathData, axisLock } from '@/lib/svg'
 import { useHistory } from '@/hooks/useHistory'
 import { MeasurementOverlay } from '@/components/MeasurementOverlay'
 
@@ -24,7 +24,7 @@ const BASE_VIEW_WIDTH = 800
 
 type EditMode = 'select' | 'vertex' | 'add-vertex' | 'delete-vertex'
 type DragState =
-  | { type: 'vertex'; polyId: string; pointIdx: number }
+  | { type: 'vertex'; polyId: string; pointIdx: number; startPoint: Point }
   | null
 
 export function PolygonEditor({
@@ -181,10 +181,16 @@ export function PolygonEditor({
     }
   }
 
+  const startVertexDrag = (polyId: string, pointIdx: number) => {
+    const poly = polygons.find(p => p.id === polyId)
+    const startPoint = poly?.points[pointIdx] ?? { x: 0, y: 0 }
+    setDragging({ type: 'vertex', polyId, pointIdx, startPoint })
+  }
+
   const handleVertexMouseDown = (polyId: string, pointIdx: number) => (e: React.MouseEvent) => {
     e.stopPropagation()
     if (editable && (editMode === 'vertex' || editMode === 'select')) {
-      setDragging({ type: 'vertex', polyId, pointIdx })
+      startVertexDrag(polyId, pointIdx)
     }
   }
 
@@ -192,7 +198,7 @@ export function PolygonEditor({
     e.stopPropagation()
     e.preventDefault()
     if (editable && (editMode === 'vertex' || editMode === 'select')) {
-      setDragging({ type: 'vertex', polyId, pointIdx })
+      startVertexDrag(polyId, pointIdx)
     }
   }
 
@@ -200,7 +206,12 @@ export function PolygonEditor({
     (e: MouseEvent) => {
       if (!dragging) return
 
-      const point = getScaledPoint(e.clientX, e.clientY)
+      let point = getScaledPoint(e.clientX, e.clientY)
+      if (e.shiftKey && dragging.type === 'vertex') {
+        // shift constrains movement to the dominant cardinal axis
+        const d = axisLock(point.x - dragging.startPoint.x, point.y - dragging.startPoint.y)
+        point = { x: dragging.startPoint.x + d.dx, y: dragging.startPoint.y + d.dy }
+      }
 
       if (dragging.type === 'vertex') {
         const updated = polygonsRef.current.map((poly) => {
@@ -377,7 +388,7 @@ export function PolygonEditor({
 
           <span className="text-sm text-text-muted">
             {(editMode === 'select' || editMode === 'vertex') && !activeId && 'Click outlines to select tools'}
-            {(editMode === 'select' || editMode === 'vertex') && activeId && 'Drag vertices to adjust the outline'}
+            {(editMode === 'select' || editMode === 'vertex') && activeId && 'Drag vertices to adjust the outline · Shift locks to an axis'}
             {editMode === 'add-vertex' && 'Click on an edge to add a vertex'}
             {editMode === 'delete-vertex' && 'Click a vertex to remove it'}
           </span>
