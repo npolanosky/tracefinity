@@ -5,10 +5,10 @@ import { useRouter } from 'next/navigation'
 import { ImageUploader } from '@/components/ImageUploader'
 import { ConfirmModal } from '@/components/ConfirmModal'
 import { SectionHeader } from '@/components/SectionHeader'
-import { uploadImage, listTools, listBins, listProjects, deleteTool, deleteBin, deleteProject, createBin, createProject, getImageUrl } from '@/lib/api'
+import { uploadImage, listTools, listBins, listProjects, deleteTool, deleteBin, deleteProject, createBin, createProject, createTool, getImageUrl } from '@/lib/api'
 import type { ToolSummary, BinSummary, BinPreviewTool, BinProjectSummary, Point, ToolImageContext, AffineMatrix, ProjectStatus } from '@/types'
 import { polygonPathData } from '@/lib/svg'
-import { Trash2, Package, Plus, Loader2, Grid3X3, Folder } from 'lucide-react'
+import { Trash2, Package, Plus, Loader2, Grid3X3, Folder, Shapes } from 'lucide-react'
 import { Alert } from '@/components/Alert'
 import { PhotoIllustration, CornersIllustration, TraceIllustration, OrganiseIllustration } from '@/components/OnboardingIllustrations'
 import { GRID_UNIT } from '@/lib/constants'
@@ -242,6 +242,7 @@ export default function HomePage() {
   const [toolSearch, setToolSearch] = useState('')
   const [toolSort, setToolSort] = useState('date')
   const [collapsedSections, setCollapsedSections] = useState<MainSectionCollapseState>(loadSectionCollapseState)
+  const [creatingShape, setCreatingShape] = useState(false)
 
   const hasData = toolsList.length > 0 || binsList.length > 0 || projectsList.length > 0
 
@@ -361,6 +362,19 @@ export default function HomePage() {
       setBinsList(prev => prev.map(b => b.project_id === id ? { ...b, project_id: null } : b))
     } catch { /* ignore */ }
     clearDelete()
+  }
+
+  async function handleNewShape() {
+    setCreatingShape(true)
+    setError(null)
+    try {
+      const tool = await createTool()
+      router.push(`/tools/${tool.id}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'failed to create shape tool')
+    } finally {
+      setCreatingShape(false)
+    }
   }
 
   async function handleCreateBin(name: string, toolIds?: string[]) {
@@ -537,7 +551,17 @@ export default function HomePage() {
             sortKey={toolSort} onSortChange={setToolSort}
             collapsed={collapsedSections.tools}
             onToggleCollapsed={() => setSectionCollapsed('tools', !collapsedSections.tools)}
-          />
+          >
+            <button
+              onClick={handleNewShape}
+              disabled={creatingShape}
+              className="glass-sm rounded-[7px] px-2.5 py-1 text-[11px] text-text-secondary flex items-center gap-1.5 hover:bg-glass-hover transition-colors cursor-pointer"
+              title="Design a precise tool from shape primitives"
+            >
+              {creatingShape ? <Loader2 className="w-3 h-3 animate-spin" /> : <Shapes className="w-3 h-3" />}
+              New shape
+            </button>
+          </SectionHeader>
           {!collapsedSections.tools && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
             {filteredTools.map(tool => {
