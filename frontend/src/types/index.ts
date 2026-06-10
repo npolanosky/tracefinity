@@ -127,6 +127,23 @@ export interface BinConfig extends BinDefaults {
 
 // --- tool library ---
 
+export type ToolShapeType = 'rectangle' | 'ellipse' | 'line'
+export type ToolShapeMode = 'add' | 'subtract' | 'guide'
+
+export interface ToolShape {
+  id: string
+  type: ToolShapeType
+  mode: ToolShapeMode
+  x: number
+  y: number
+  rotation: number
+  width?: number | null // rectangle; line length when type="line"
+  height?: number | null
+  corner_radius?: number
+  rx?: number | null // ellipse semi-axes (circle when rx == ry)
+  ry?: number | null
+}
+
 export interface Tool {
   id: string
   name: string
@@ -144,6 +161,8 @@ export interface Tool {
   review_status: string | null
   needs_cleanup: boolean
   created_at: string | null
+  shapes?: ToolShape[] | null
+  clearance_override?: number | null
 }
 
 export type AffineMatrix = [number, number, number, number, number, number]
@@ -176,6 +195,7 @@ export interface ToolSummary {
   project_ids: string[]
   review_status: string | null
   needs_cleanup: boolean
+  parametric: boolean
 }
 
 // --- projects ---

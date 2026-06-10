@@ -38,9 +38,12 @@ from app.models.schemas import (
     FingerHole,
     Tool,
     ToolDetailResponse,
+    ToolShape,
+    CreateToolRequest,
     ToolSummary,
     ToolListResponse,
     ToolUpdateRequest,
+    CreateToolRequest,
     SaveToolsRequest,
     SaveToolsResponse,
     NameToolsRequest,
@@ -74,8 +77,9 @@ from app.services.session_store import SessionStore
 from app.services.tool_store import ToolStore
 from app.services.bin_store import BinStore
 from app.services.project_store import ProjectStore
-from app.services.bin_service import sync_placed_tools
+from app.services.bin_service import sync_placed_tools, resolve_clearance
 from app.services.image_service import generate_tool_thumbnail, crop_polygon_png
+from app.services import shape_compiler
 from app.services.tool_namer import get_tool_namer, tool_naming_available
 from app.services.tracer_registry import TRACER_LABELS, tracer_kind, validate_tracer_ids
 from app.services.geometry import optimal_rotation_angle as _optimal_rotation_angle
@@ -976,6 +980,7 @@ async def list_tools(request: Request, user_id: str = Depends(get_user_id)):
             project_ids=tool.project_ids,
             review_status=tool.review_status,
             needs_cleanup=tool.needs_cleanup,
+            parametric=tool.shapes is not None,
         ))
     summaries.sort(key=lambda t: t.created_at or "", reverse=True)
     return ToolListResponse(tools=summaries)
@@ -996,21 +1001,70 @@ async def get_tool(request: Request, tool_id: str, user_id: str = Depends(get_us
     return data
 
 
-@router.put("/tools/{tool_id}", response_model=StatusResponse)
+@router.post("/tools", response_model=Tool)
+async def create_tool(request: Request, req: CreateToolRequest, user_id: str = Depends(get_user_id)):
+    """create a parametric (designer) tool from shape primitives"""
+    _, user_tools, _ = get_stores(user_id)
+
+    shapes = req.shapes or [
+        ToolShape(id=str(uuid.uuid4()), type="rectangle", mode="add", width=40.0, height=40.0)
+    ]
+    try:
+        points, interior_rings, offset = shape_compiler.compile_shapes(shapes)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    tool_id = str(uuid.uuid4())
+    tool = Tool(
+        id=tool_id,
+        name=req.name,
+        points=points,
+        interior_rings=interior_rings,
+        shapes=shape_compiler.recentre_shapes(shapes, offset),
+        created_at=datetime.utcnow().isoformat(),
+    )
+    user_tools.set(tool_id, tool)
+    return tool
+
+
+@router.put("/tools/{tool_id}", response_model=Tool)
 async def update_tool(request: Request, tool_id: str, req: ToolUpdateRequest, user_id: str = Depends(get_user_id)):
     _, user_tools, _ = get_stores(user_id)
     tool = user_tools.get(tool_id)
     if not tool:
         raise HTTPException(status_code=404, detail="tool not found")
 
+    provided = req.model_fields_set
+
+    if "shapes" in provided:
+        if req.shapes is not None:
+            if len(req.shapes) == 0:
+                raise HTTPException(status_code=422, detail="design needs at least one shape")
+            try:
+                points, interior_rings, offset = shape_compiler.compile_shapes(req.shapes)
+            except ValueError as e:
+                raise HTTPException(status_code=422, detail=str(e))
+            tool.shapes = shape_compiler.recentre_shapes(req.shapes, offset)
+            tool.points = points
+            tool.interior_rings = interior_rings
+        else:
+            # explicit null detaches to a plain polygon, keeping materialized points
+            tool.shapes = None
+    elif tool.shapes is not None and (req.points is not None or req.interior_rings is not None):
+        raise HTTPException(
+            status_code=422,
+            detail="this tool is shape-based; edit its shapes or convert it to a polygon first",
+        )
+
     if req.name is not None:
         tool.name = req.name
-    if req.points is not None:
-        tool.points = req.points
+    if tool.shapes is None:
+        if req.points is not None:
+            tool.points = req.points
+        if req.interior_rings is not None:
+            tool.interior_rings = req.interior_rings
     if req.finger_holes is not None:
         tool.finger_holes = req.finger_holes
-    if req.interior_rings is not None:
-        tool.interior_rings = req.interior_rings
     if req.smoothed is not None:
         tool.smoothed = req.smoothed
     if req.smooth_level is not None:
@@ -1029,8 +1083,10 @@ async def update_tool(request: Request, tool_id: str, req: ToolUpdateRequest, us
         tool.review_status = req.review_status
     if req.needs_cleanup is not None:
         tool.needs_cleanup = req.needs_cleanup
+    if "clearance_override" in provided:
+        tool.clearance_override = req.clearance_override
     user_tools.set(tool_id, tool)
-    return StatusResponse(status="ok")
+    return tool
 
 
 @router.post("/tools/{tool_id}/auto-rotate")
@@ -1069,7 +1125,10 @@ async def download_tool_svg(request: Request, tool_id: str, user_id: str = Depen
     ) for fh in tool.finger_holes]
     sp = ScaledPolygon(tool.id, points_mm, tool.name, fholes, interior_rings_mm)
 
-    if tool.smoothed:
+    if tool.shapes:
+        # parametric outlines are exact; only strip collinear points
+        sp = polygon_scaler.simplify(sp, tolerance_mm=0.05)
+    elif tool.smoothed:
         sp = polygon_scaler.smooth(sp, level=tool.smooth_level)
     else:
         sp = polygon_scaler.simplify(sp)
@@ -1616,13 +1675,16 @@ def generate_bin_stl(request: Request, bin_id: str, user_id: str = Depends(get_u
 
     bc = bin_data.bin_config
 
-    # include source tool smoothed state in hash so toggling invalidates cache
+    # include source tool smoothed/parametric/clearance state in hash so
+    # toggling any of them invalidates the cache
     smoothed_flags = {}
     for pt in bin_data.placed_tools:
         src = user_tools.get(pt.tool_id)
         smoothed_flags[pt.tool_id] = {
             "smoothed": src.smoothed if src else False,
             "smooth_level": src.smooth_level if src else 0.5,
+            "parametric": src.shapes is not None if src else False,
+            "clearance_override": src.clearance_override if src else None,
         }
     input_data = {
         "bin_config": bc.model_dump(),
@@ -1652,9 +1714,10 @@ def generate_bin_stl(request: Request, bin_id: str, user_id: str = Depends(get_u
         source_tool = user_tools.get(pt.tool_id)
         sp = polygon_scaler.prepare_for_generation(
             sp,
-            bc.cutout_clearance,
+            resolve_clearance(source_tool, bc.cutout_clearance),
             smoothed=bool(source_tool and source_tool.smoothed),
             smooth_level=source_tool.smooth_level if source_tool else 0.5,
+            parametric=bool(source_tool and source_tool.shapes),
         )
         scaled.append(sp)
 

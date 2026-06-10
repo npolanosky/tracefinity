@@ -212,12 +212,21 @@ class PolygonScaler:
         clearance_mm: float,
         smoothed: bool,
         smooth_level: float = 0.5,
+        parametric: bool = False,
     ) -> ScaledPolygon:
         """cutout pipeline: smooth or simplify first, clearance last.
         vertex reduction erodes the outline by up to its tolerance; applied
         before buffering that erosion can never eat into the clearance, and
-        the printed pocket is exactly the previewed shape grown by clearance."""
-        shape = self.smooth(polygon, level=smooth_level) if smoothed else self.simplify(polygon)
+        the printed pocket is exactly the previewed shape grown by clearance.
+
+        parametric outlines are exact, so they only get a light collinear-point
+        strip (0.05mm) instead of smoothing or the default simplify."""
+        if parametric:
+            shape = self.simplify(polygon, tolerance_mm=0.05)
+        elif smoothed:
+            shape = self.smooth(polygon, level=smooth_level)
+        else:
+            shape = self.simplify(polygon)
         return self.add_clearance(shape, clearance_mm)
 
     def compute_bounding_box(

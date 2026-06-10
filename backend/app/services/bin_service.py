@@ -2,6 +2,13 @@ import math
 from app.models.schemas import Point, FingerHole
 
 
+def resolve_clearance(source_tool, bin_clearance: float) -> float:
+    """per-tool clearance override wins over the bin's global cutout_clearance"""
+    if source_tool is not None and source_tool.clearance_override is not None:
+        return source_tool.clearance_override
+    return bin_clearance
+
+
 def sync_placed_tools(bin_data, user_tools) -> bool:
     """sync placed tools with their library versions. returns True if any changed."""
     changed = False
