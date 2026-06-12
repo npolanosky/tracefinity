@@ -1,4 +1,4 @@
-"""Tests for parametric shape materialization in shape_compiler."""
+﻿"""Tests for parametric shape materialization in shape_compiler."""
 import math
 
 import pytest
@@ -27,7 +27,7 @@ def bbox(points):
 class TestPrimitives:
     def test_circle_resolution(self):
         # a 33mm-diameter circle must stay genuinely round
-        points, rings, _ = compile_shapes([circle(r=16.5)])
+        points, rings, _, _ = compile_shapes([circle(r=16.5)])
         assert len(points) >= 40
         assert rings == []
         # every vertex on the radius within chord tolerance
@@ -35,18 +35,18 @@ class TestPrimitives:
             assert math.hypot(p.x, p.y) == pytest.approx(16.5, abs=0.06)
 
     def test_rectangle_exact(self):
-        points, _, _ = compile_shapes([rect(w=80, h=30)])
+        points, _, _, _ = compile_shapes([rect(w=80, h=30)])
         minx, miny, maxx, maxy = bbox(points)
         assert (maxx - minx) == pytest.approx(80)
         assert (maxy - miny) == pytest.approx(30)
 
     def test_rotated_rounded_rect_valid(self):
-        points, rings, _ = compile_shapes([rect(w=50, h=20, rotation=30, corner_radius=5)])
+        points, rings, _, _ = compile_shapes([rect(w=50, h=20, rotation=30, corner_radius=5)])
         assert len(points) >= 4
         assert rings == []
 
     def test_result_centered_at_origin(self):
-        points, _, offset = compile_shapes([rect(x=100, y=-50, w=40, h=20)])
+        points, _, offset, _ = compile_shapes([rect(x=100, y=-50, w=40, h=20)])
         minx, miny, maxx, maxy = bbox(points)
         assert (minx + maxx) / 2 == pytest.approx(0, abs=1e-6)
         assert (miny + maxy) / 2 == pytest.approx(0, abs=1e-6)
@@ -55,7 +55,7 @@ class TestPrimitives:
 
 class TestBooleans:
     def test_overlapping_adds_union_to_single_ring(self):
-        points, rings, _ = compile_shapes([
+        points, rings, _, _ = compile_shapes([
             rect(id="a", w=40, h=40),
             rect(id="b", x=30, w=40, h=40),
         ])
@@ -64,7 +64,7 @@ class TestBooleans:
         assert rings == []
 
     def test_subtract_inside_makes_interior_ring(self):
-        points, rings, _ = compile_shapes([
+        points, rings, _, _ = compile_shapes([
             rect(w=80, h=30),
             circle(mode="subtract", r=5),
         ])
@@ -96,7 +96,7 @@ class TestBooleans:
 
 class TestGuides:
     def test_guides_excluded_from_outline(self):
-        points, rings, _ = compile_shapes([
+        points, rings, _, _ = compile_shapes([
             rect(w=40, h=40),
             circle(id="g", mode="guide", x=20, y=20, r=30),
         ])
@@ -107,7 +107,7 @@ class TestGuides:
 
     def test_guide_line_allowed(self):
         line = ToolShape(id="l", type="line", mode="guide", width=100)
-        points, _, _ = compile_shapes([rect(), line])
+        points, _, _, _ = compile_shapes([rect(), line])
         assert len(points) >= 4
 
     def test_solid_line_rejected(self):
@@ -119,15 +119,15 @@ class TestGuides:
 class TestRecentre:
     def test_shapes_shifted_by_offset(self):
         shapes = [rect(x=100, y=-50)]
-        _, _, offset = compile_shapes(shapes)
+        _, _, offset, _ = compile_shapes(shapes)
         shifted = recentre_shapes(shapes, offset)
         assert shifted[0].x == pytest.approx(0)
         assert shifted[0].y == pytest.approx(0)
 
     def test_recompiling_recentred_shapes_is_stable(self):
         shapes = [rect(x=12.5, w=40, h=20), circle(x=30, r=10)]
-        points1, _, offset = compile_shapes(shapes)
+        points1, _, offset, _ = compile_shapes(shapes)
         shifted = recentre_shapes(shapes, offset)
-        points2, _, offset2 = compile_shapes(shifted)
+        points2, _, offset2, _ = compile_shapes(shifted)
         assert offset2 == pytest.approx((0, 0), abs=1e-9)
         assert len(points1) == len(points2)

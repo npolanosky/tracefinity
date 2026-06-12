@@ -257,6 +257,29 @@ class ToolShape(BaseModel):
     corner_radius: float = 0.0  # rectangle
     rx: float | None = None  # ellipse semi-axes (circle when rx == ry)
     ry: float | None = None
+    # pocket depth in mm from the bin top; only meaningful for mode="add".
+    # None = the bin/placement default depth (single-level behaviour)
+    depth: float | None = None
+
+    @field_validator("depth")
+    @classmethod
+    def validate_shape_depth(cls, v: float | None) -> float | None:
+        if v is not None and (v < 1 or v > 200):
+            raise ValueError("shape depth must be between 1 and 200mm")
+        return v
+
+
+class ToolLevelPart(BaseModel):
+    """one connected component of a depth level's cross-section, tool space mm"""
+    points: list[Point]
+    interior_rings: list[list[Point]] = []
+
+
+class ToolLevel(BaseModel):
+    """materialized cross-section for one pocket depth. the pocket is the
+    union of each level extruded from the bin top down to its own depth."""
+    depth: float | None = None  # None = the default-depth group
+    parts: list[ToolLevelPart]
 
 
 class Tool(BaseModel):
@@ -285,6 +308,8 @@ class Tool(BaseModel):
     shapes: list[ToolShape] | None = None
     clearance_override: float | None = None  # mm; None = bin's cutout_clearance
     spacing_override: float | None = None  # mm; None = bin's tool_spacing
+    # materialized per-depth cross-sections; None unless a shape has a depth
+    levels: list[ToolLevel] | None = None
 
 
 class ToolDetailResponse(Tool):

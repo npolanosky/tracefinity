@@ -282,6 +282,20 @@ def _make_filleted_rectangle_cutter(
     )
 
 
+def _resolve_level_depth(
+    part_depth: float | None,
+    placement_override: float | None,
+    config,
+    max_depth: float,
+) -> float:
+    """Per-level pocket depth: an explicit level depth is absolute (the
+    placement override does not scale or offset it); the default-depth group
+    falls back to the placement override, then the bin's cutout_depth.
+    insert_height and the [5, max_depth] clamp apply uniformly."""
+    override = part_depth if part_depth is not None else placement_override
+    return _resolve_pocket_depth(override, config, max_depth)
+
+
 def _magnet_inset(config) -> float | None:
     """Per-side magnet inset from cell centre. Clamps to fit the smaller of
     the X/Y cells with ~1mm clearance to the cell edge. Returns None when the
@@ -391,6 +405,38 @@ def _shapely_to_cross_sections(shifted_pts: list[tuple], interior_rings: list[li
     return rings
 
 
+def _shift_rings(points, holes, offset_x: float, offset_y: float):
+    """apply the bin-centre shift and the Y-axis flip (SVG Y-down → manifold
+    Y-up) to one exterior + holes ring set"""
+    shifted = [(p[0] + offset_x, -(p[1] + offset_y)) for p in points]
+    shifted_holes = []
+    for hole in (holes or []):
+        sh = [(p[0] + offset_x, -(p[1] + offset_y)) for p in hole]
+        if len(sh) >= 3:
+            shifted_holes.append(sh)
+    return shifted, shifted_holes
+
+
+def _build_cross_section(shifted, shifted_holes):
+    """repair via Shapely and build a CrossSection; None when degenerate"""
+    import manifold3d as mf
+
+    rings = _shapely_to_cross_sections(shifted, shifted_holes)
+    if not rings:
+        return None
+    has_holes = len(rings) > 1
+    if has_holes:
+        # use EvenOdd to handle holes — same pattern as text labels
+        cs = mf.CrossSection(rings, mf.FillRule.EvenOdd)
+    else:
+        cs = mf.CrossSection(rings)
+    if cs.area() <= 0:
+        cs = mf.CrossSection([r[::-1] for r in rings], mf.FillRule.EvenOdd if has_holes else mf.FillRule.Positive)
+    if cs.area() <= 0:
+        return None
+    return cs
+
+
 def _make_polygon_cutouts(
     polygons: list[ScaledPolygon],
     config: GenerateRequest,
@@ -399,44 +445,45 @@ def _make_polygon_cutouts(
     offset_x: float,
     offset_y: float,
 ):
-    """Batch union of all polygon cutout extrusions."""
+    """Batch union of all polygon cutout extrusions.
+
+    Multi-level polygons cut one prism per level part instead of the
+    footprint; every prism opens at the bin top, so the union forms a
+    stepped pocket with no overhangs by construction."""
     import manifold3d as mf
 
     cutters = []
     for poly in polygons:
-        shifted = [
-            (p[0] + offset_x, -(p[1] + offset_y))
-            for p in poly.points_mm
-        ]
+        if poly.levels:
+            for part in poly.levels:
+                shifted, shifted_holes = _shift_rings(part.points_mm, part.interior_rings_mm, offset_x, offset_y)
+                if len(shifted) < 3:
+                    continue
+                try:
+                    cs = _build_cross_section(shifted, shifted_holes)
+                    if cs is None:
+                        continue
+                    pocket_depth = _resolve_level_depth(part.depth, poly.depth_override, config, max_depth)
+                    cutter = mf.Manifold.extrude(cs, pocket_depth + 0.01).translate(
+                        (0.0, 0.0, wall_top_z - pocket_depth)
+                    )
+                    cutters.append(cutter)
+                except Exception as e:
+                    logger.warning("level cutout failed: %s", e)
+            continue
+
+        shifted, shifted_holes = _shift_rings(poly.points_mm, poly.interior_rings_mm, offset_x, offset_y)
         if len(shifted) < 3:
             continue
-        # shift interior rings the same way
-        shifted_holes = []
-        for hole in (poly.interior_rings_mm or []):
-            shifted_hole = [
-                (p[0] + offset_x, -(p[1] + offset_y))
-                for p in hole
-            ]
-            if len(shifted_hole) >= 3:
-                shifted_holes.append(shifted_hole)
         try:
-            rings = _shapely_to_cross_sections(shifted, shifted_holes)
-            if not rings:
+            cs = _build_cross_section(shifted, shifted_holes)
+            if cs is None:
                 continue
-            has_holes = len(rings) > 1
-            if has_holes:
-                # use EvenOdd to handle holes — same pattern as text labels
-                cs = mf.CrossSection(rings, mf.FillRule.EvenOdd)
-            else:
-                cs = mf.CrossSection(rings)
-            if cs.area() <= 0:
-                cs = mf.CrossSection([r[::-1] for r in rings], mf.FillRule.EvenOdd if has_holes else mf.FillRule.Positive)
-            if cs.area() > 0:
-                pocket_depth = _resolve_pocket_depth(poly.depth_override, config, max_depth)
-                cutter = mf.Manifold.extrude(cs, pocket_depth + 0.01).translate(
-                    (0.0, 0.0, wall_top_z - pocket_depth)
-                )
-                cutters.append(cutter)
+            pocket_depth = _resolve_pocket_depth(poly.depth_override, config, max_depth)
+            cutter = mf.Manifold.extrude(cs, pocket_depth + 0.01).translate(
+                (0.0, 0.0, wall_top_z - pocket_depth)
+            )
+            cutters.append(cutter)
         except Exception as e:
             logger.warning("polygon cutout failed: %s", e)
 
@@ -479,7 +526,16 @@ def _make_chamfer_cutouts(
             if len(sh) >= 3:
                 shifted_holes.append(sh)
 
-        pocket_depth = _resolve_pocket_depth(poly.depth_override, config, max_depth)
+        # the chamfer cuts on the footprint top edge; clamp to the shallowest
+        # level so it cannot punch through the floor of a shallow level whose
+        # edge lies on the outline
+        if poly.levels:
+            pocket_depth = min(
+                _resolve_level_depth(part.depth, poly.depth_override, config, max_depth)
+                for part in poly.levels
+            )
+        else:
+            pocket_depth = _resolve_pocket_depth(poly.depth_override, config, max_depth)
         eff_chamfer = min(chamfer_size, max(0.0, pocket_depth - 1))
         if eff_chamfer <= 0:
             continue

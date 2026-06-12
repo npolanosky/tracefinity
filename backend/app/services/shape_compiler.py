@@ -12,7 +12,7 @@ from shapely.geometry import Point as ShapelyPoint, Polygon as ShapelyPolygon, b
 from shapely.ops import unary_union
 from shapely.validation import make_valid
 
-from app.models.schemas import Point, ToolShape
+from app.models.schemas import Point, ToolLevel, ToolLevelPart, ToolShape
 
 # max chord deviation when approximating curves with segments. 0.05mm keeps a
 # 33mm circle visually round and survives the 0.05mm collinear-cleanup simplify.
@@ -59,15 +59,34 @@ def _ring_points(coords) -> list[Point]:
     return [Point(x=c[0], y=c[1]) for c in list(coords)[:-1]]
 
 
+def _level_parts(geom) -> list[ToolLevelPart]:
+    """split a (Multi)Polygon into ToolLevelParts, one per connected component"""
+    polys = list(geom.geoms) if geom.geom_type == "MultiPolygon" else [geom]
+    parts = []
+    for p in polys:
+        if p.is_empty or p.area < 1e-6:
+            continue
+        parts.append(ToolLevelPart(
+            points=_ring_points(p.exterior.coords),
+            interior_rings=[_ring_points(i.coords) for i in p.interiors],
+        ))
+    return parts
+
+
 def compile_shapes(
     shapes: list[ToolShape],
-) -> tuple[list[Point], list[list[Point]], tuple[float, float]]:
+) -> tuple[list[Point], list[list[Point]], tuple[float, float], list[ToolLevel] | None]:
     """union all additive shapes, subtract all subtractive ones, recentre on the
     bounding-box midpoint (the convention every Tool consumer assumes).
 
-    Returns (points, interior_rings, (cx, cy)) where (cx, cy) is the offset that
-    was subtracted -- callers must shift stored shape positions by the same
-    amount so shapes and materialized points stay congruent.
+    Returns (points, interior_rings, (cx, cy), levels) where (cx, cy) is the
+    offset that was subtracted -- callers must shift stored shape positions by
+    the same amount so shapes and materialized points stay congruent.
+
+    levels is None unless at least one add-shape has a depth: then adds are
+    grouped by depth (None = default group), every group has ALL subtracts
+    carved out, and union(levels) == the footprint exactly. The pocket becomes
+    the union of each level extruded to its own depth.
 
     Raises ValueError with a user-facing message on invalid input.
     """
@@ -75,15 +94,17 @@ def compile_shapes(
         if s.type == "line" and s.mode != "guide":
             raise ValueError("lines can only be guides")
 
-    adds = [_shape_geometry(s) for s in shapes if s.mode == "add"]
+    add_shapes = [s for s in shapes if s.mode == "add"]
+    adds = [_shape_geometry(s) for s in add_shapes]
     subs = [_shape_geometry(s) for s in shapes if s.mode == "subtract"]
 
     if not adds:
         raise ValueError("design needs at least one solid (additive) shape")
 
+    sub_union = unary_union(subs) if subs else None
     result = unary_union(adds)
-    if subs:
-        result = result.difference(unary_union(subs))
+    if sub_union is not None:
+        result = result.difference(sub_union)
     if not result.is_valid:
         result = make_valid(result)
 
@@ -104,7 +125,29 @@ def compile_shapes(
 
     points = _ring_points(result.exterior.coords)
     interior_rings = [_ring_points(interior.coords) for interior in result.interiors]
-    return points, interior_rings, (cx, cy)
+
+    levels = None
+    if any(s.depth is not None for s in add_shapes):
+        groups: dict[float | None, list] = {}
+        for s, geom in zip(add_shapes, adds):
+            groups.setdefault(s.depth, []).append(geom)
+        levels = []
+        for depth, geoms in groups.items():
+            level_geom = unary_union(geoms)
+            if sub_union is not None:
+                level_geom = level_geom.difference(sub_union)
+            if not level_geom.is_valid:
+                level_geom = make_valid(level_geom)
+            if level_geom.is_empty or level_geom.area < 1e-6:
+                continue
+            level_geom = affinity.translate(level_geom, -cx, -cy)
+            parts = _level_parts(level_geom)
+            if parts:
+                levels.append(ToolLevel(depth=depth, parts=parts))
+        if not levels:
+            levels = None
+
+    return points, interior_rings, (cx, cy), levels
 
 
 def recentre_shapes(shapes: list[ToolShape], offset: tuple[float, float]) -> list[ToolShape]:
