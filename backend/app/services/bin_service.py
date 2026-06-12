@@ -9,6 +9,17 @@ def resolve_clearance(source_tool, bin_clearance: float) -> float:
     return bin_clearance
 
 
+def resolve_spacing(source_tool, bin_spacing: float) -> float:
+    """per-tool spacing override wins over the bin's global tool_spacing.
+
+    spacing is a keep-out air gap beyond the cutout outline used when
+    arranging tools; it never changes pocket geometry.
+    """
+    if source_tool is not None and source_tool.spacing_override is not None:
+        return source_tool.spacing_override
+    return bin_spacing
+
+
 def sync_placed_tools(bin_data, user_tools) -> bool:
     """sync placed tools with their library versions. returns True if any changed."""
     changed = False

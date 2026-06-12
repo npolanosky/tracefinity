@@ -981,6 +981,8 @@ async def list_tools(request: Request, user_id: str = Depends(get_user_id)):
             review_status=tool.review_status,
             needs_cleanup=tool.needs_cleanup,
             parametric=tool.shapes is not None,
+            clearance_override=tool.clearance_override,
+            spacing_override=tool.spacing_override,
         ))
     summaries.sort(key=lambda t: t.created_at or "", reverse=True)
     return ToolListResponse(tools=summaries)
@@ -1085,6 +1087,8 @@ async def update_tool(request: Request, tool_id: str, req: ToolUpdateRequest, us
         tool.needs_cleanup = req.needs_cleanup
     if "clearance_override" in provided:
         tool.clearance_override = req.clearance_override
+    if "spacing_override" in provided:
+        tool.spacing_override = req.spacing_override
     user_tools.set(tool_id, tool)
     return tool
 
