@@ -74,16 +74,16 @@ function ShapeElement({ shape, zoom, selected }: { shape: ToolShape; zoom: numbe
   )
 }
 
-function MaskShape({ shape }: { shape: ToolShape }) {
-  const fill = shape.mode === 'add' ? 'white' : 'black'
+function MaskShape({ shape, fill }: { shape: ToolShape; fill?: string }) {
+  const f = fill ?? (shape.mode === 'add' ? 'white' : 'black')
   const transform = `translate(${shape.x * S},${shape.y * S})${shape.rotation ? ` rotate(${shape.rotation})` : ''}`
   if (shape.type === 'rectangle') {
     const w = (shape.width ?? 0) * S
     const h = (shape.height ?? 0) * S
     const r = (shape.corner_radius ?? 0) * S
-    return <rect transform={transform} x={-w / 2} y={-h / 2} width={w} height={h} rx={r} ry={r} fill={fill} />
+    return <rect transform={transform} x={-w / 2} y={-h / 2} width={w} height={h} rx={r} ry={r} fill={f} />
   }
-  return <ellipse transform={transform} rx={(shape.rx ?? 0) * S} ry={(shape.ry ?? 0) * S} fill={fill} />
+  return <ellipse transform={transform} rx={(shape.rx ?? 0) * S} ry={(shape.ry ?? 0) * S} fill={f} />
 }
 
 export function ShapeDesignerCanvas({
@@ -151,6 +151,38 @@ export function ShapeDesignerCanvas({
           mask="url(#shape-bool-mask)"
           className="pointer-events-none"
         />
+
+        {/* per-shape depth: darker = deeper, masked so holes stay unpainted */}
+        {(() => {
+          const depthShapes = shapes.filter((sh) => sh.mode === 'add' && sh.depth != null)
+          if (depthShapes.length === 0) return null
+          const maxD = Math.max(30, ...depthShapes.map((sh) => sh.depth!))
+          return (
+            <g className="pointer-events-none">
+              <g mask="url(#shape-bool-mask)">
+                {depthShapes.map((sh) => (
+                  <MaskShape
+                    key={`depth-${sh.id}`}
+                    shape={sh}
+                    fill={`rgba(0, 0, 0, ${0.12 + 0.38 * Math.min(1, sh.depth! / maxD)})`}
+                  />
+                ))}
+              </g>
+              {depthShapes.map((sh) => (
+                <text
+                  key={`depth-label-${sh.id}`}
+                  x={sh.x * S} y={sh.y * S}
+                  textAnchor="middle" dominantBaseline="central"
+                  fill="rgba(255, 255, 255, 0.75)"
+                  fontSize={11 * s}
+                  fontFamily="Arial, sans-serif"
+                >
+                  {sh.depth}mm
+                </text>
+              ))}
+            </g>
+          )
+        })()}
 
         {/* authoritative outline from the last server materialization */}
         {outlinePoints.length >= 3 && (

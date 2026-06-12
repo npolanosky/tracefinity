@@ -143,6 +143,8 @@ export interface ToolShape {
   corner_radius?: number
   rx?: number | null // ellipse semi-axes (circle when rx == ry)
   ry?: number | null
+  // pocket depth in mm from the bin top; add-shapes only, null = bin default
+  depth?: number | null
 }
 
 export interface Tool {
