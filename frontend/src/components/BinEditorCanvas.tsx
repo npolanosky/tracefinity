@@ -10,7 +10,7 @@ import { toolBounds } from '@/lib/packing'
 type Tool = 'select' | 'text'
 
 type Selection =
-  | { type: 'tool'; toolId: string }
+  | { type: 'tool'; toolIds: string[] }
   | { type: 'hole'; toolId: string; holeId: string }
   | { type: 'label'; labelId: string }
   | null
@@ -35,6 +35,8 @@ interface Props {
   smoothLevels?: Map<string, number>
   // mm beyond each placement's bbox to draw as a dashed keep-out halo
   keepOutByPlacementId?: Map<string, number>
+  // rubber-band selection rect, mm
+  marquee?: { x0: number; y0: number; x1: number; y1: number } | null
   activeTool: Tool
   binWidthMm: number
   binHeightMm: number
@@ -47,6 +49,7 @@ interface Props {
   pendingInputRef: RefObject<HTMLInputElement | null>
   editInputRef: RefObject<HTMLInputElement | null>
   // event handlers
+  handleCanvasMouseDown: (e: React.MouseEvent) => void
   handleToolMouseDown: (toolId: string) => (e: React.MouseEvent) => void
   handleRotateMouseDown: (toolId: string) => (e: React.MouseEvent) => void
   handleLabelMouseDown: (labelId: string) => (e: React.MouseEvent) => void
@@ -83,6 +86,7 @@ export function BinEditorCanvas({
   smoothedToolIds,
   smoothLevels,
   keepOutByPlacementId,
+  marquee,
   activeTool,
   binWidthMm,
   binHeightMm,
@@ -92,6 +96,7 @@ export function BinEditorCanvas({
   handleOffset,
   pendingInputRef,
   editInputRef,
+  handleCanvasMouseDown,
   handleToolMouseDown,
   handleRotateMouseDown,
   handleLabelMouseDown,
@@ -120,6 +125,7 @@ export function BinEditorCanvas({
           className={`rounded max-w-full max-h-full ${activeTool === 'select' ? 'cursor-default' : 'cursor-crosshair'}`}
           style={{ overflow: 'visible' }}
           onClick={handleBackgroundClick}
+          onMouseDown={handleCanvasMouseDown}
         >
           <rect x="0" y="0" width={displayWidth} height={displayHeight} fill="rgb(30, 41, 59)" rx="4" />
           {Array.from({ length: gridX + 1 }).map((_, i) => (
@@ -162,7 +168,7 @@ export function BinEditorCanvas({
             } else {
               pathData = polygonPathData(tool.points, tool.interior_rings, DISPLAY_SCALE)
             }
-            const isSelected = selection?.type === 'tool' && selection.toolId === tool.id
+            const isSelected = selection?.type === 'tool' && selection.toolIds.includes(tool.id)
 
             const keepOut = keepOutByPlacementId?.get(tool.id)
 
@@ -248,9 +254,32 @@ export function BinEditorCanvas({
             )
           })}
 
-          {/* selection handles: tool */}
-          {selection?.type === 'tool' && (() => {
-            const tool = placedTools.find(t => t.id === selection.toolId)
+          {/* multi-selection: dashed bbox per selected tool, no rotate handles */}
+          {selection?.type === 'tool' && selection.toolIds.length > 1 && selection.toolIds.map(id => {
+            const tool = placedTools.find(t => t.id === id)
+            if (!tool) return null
+            const pad = handleR * 0.4
+            let bMinX = Infinity, bMinY = Infinity, bMaxX = -Infinity, bMaxY = -Infinity
+            for (const p of tool.points) {
+              bMinX = Math.min(bMinX, p.x); bMinY = Math.min(bMinY, p.y)
+              bMaxX = Math.max(bMaxX, p.x); bMaxY = Math.max(bMaxY, p.y)
+            }
+            return (
+              <rect
+                key={`msel-${id}`}
+                x={bMinX * DISPLAY_SCALE - pad} y={bMinY * DISPLAY_SCALE - pad}
+                width={(bMaxX - bMinX) * DISPLAY_SCALE + 2 * pad}
+                height={(bMaxY - bMinY) * DISPLAY_SCALE + 2 * pad}
+                fill="none" stroke="rgba(90, 180, 222, 0.5)" strokeWidth={handleStroke}
+                strokeDasharray={`${handleR * 0.4},${handleR * 0.25}`}
+                className="pointer-events-none"
+              />
+            )
+          })}
+
+          {/* selection handles: single tool */}
+          {selection?.type === 'tool' && selection.toolIds.length === 1 && (() => {
+            const tool = placedTools.find(t => t.id === selection.toolIds[0])
             if (!tool) return null
             const pad = handleR * 0.4
             let bMinX = Infinity, bMinY = Infinity, bMaxX = -Infinity, bMaxY = -Infinity
@@ -359,6 +388,25 @@ export function BinEditorCanvas({
                   )
                 })}
               </g>
+            )
+          })()}
+
+          {/* rubber-band selection rect */}
+          {marquee && (() => {
+            const x = Math.min(marquee.x0, marquee.x1) * DISPLAY_SCALE
+            const y = Math.min(marquee.y0, marquee.y1) * DISPLAY_SCALE
+            const w = Math.abs(marquee.x1 - marquee.x0) * DISPLAY_SCALE
+            const h = Math.abs(marquee.y1 - marquee.y0) * DISPLAY_SCALE
+            if (w < 1 && h < 1) return null
+            return (
+              <rect
+                x={x} y={y} width={w} height={h}
+                fill="rgba(90, 180, 222, 0.08)"
+                stroke="rgba(90, 180, 222, 0.6)"
+                strokeWidth={handleStroke}
+                strokeDasharray="4,3"
+                className="pointer-events-none"
+              />
             )
           })()}
 
