@@ -257,6 +257,7 @@ export async function updateTool(
     needs_cleanup?: boolean
     shapes?: import('@/types').ToolShape[] | null
     clearance_override?: number | null
+    spacing_override?: number | null
   }
 ): Promise<Tool> {
   return fetchApi(`/api/tools/${toolId}`, {

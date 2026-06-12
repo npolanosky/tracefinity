@@ -5,6 +5,7 @@ import type { PlacedTool, TextLabel } from '@/types'
 import { polygonPathData, smoothPathData, simplifyPolygon, smoothEpsilon } from '@/lib/svg'
 import { DEFAULT_GRID_UNIT, DISPLAY_SCALE } from '@/lib/constants'
 import { CutoutOverlay } from '@/components/CutoutOverlay'
+import { toolBounds } from '@/lib/packing'
 
 type Tool = 'select' | 'text'
 
@@ -32,6 +33,8 @@ interface Props {
   pendingLabelText: string
   smoothedToolIds?: Set<string>
   smoothLevels?: Map<string, number>
+  // mm beyond each placement's bbox to draw as a dashed keep-out halo
+  keepOutByPlacementId?: Map<string, number>
   activeTool: Tool
   binWidthMm: number
   binHeightMm: number
@@ -79,6 +82,7 @@ export function BinEditorCanvas({
   pendingLabelText,
   smoothedToolIds,
   smoothLevels,
+  keepOutByPlacementId,
   activeTool,
   binWidthMm,
   binHeightMm,
@@ -160,8 +164,30 @@ export function BinEditorCanvas({
             }
             const isSelected = selection?.type === 'tool' && selection.toolId === tool.id
 
+            const keepOut = keepOutByPlacementId?.get(tool.id)
+
             return (
               <g key={tool.id} onClick={stopClickUnlessText}>
+                {keepOut != null && keepOut > 0 && (() => {
+                  // keep-out halo at the bbox the arranger packs (outline +
+                  // finger holes), expanded by clearance + spacing
+                  const b = toolBounds(tool)
+                  const off = keepOut * DISPLAY_SCALE
+                  return (
+                    <rect
+                      x={b.minX * DISPLAY_SCALE - off}
+                      y={b.minY * DISPLAY_SCALE - off}
+                      width={(b.maxX - b.minX) * DISPLAY_SCALE + 2 * off}
+                      height={(b.maxY - b.minY) * DISPLAY_SCALE + 2 * off}
+                      rx={off}
+                      fill="none"
+                      stroke="rgba(251, 191, 36, 0.45)"
+                      strokeWidth={handleStroke}
+                      strokeDasharray="5,4"
+                      className="pointer-events-none"
+                    />
+                  )
+                })()}
                 <path
                   d={pathData}
                   fillRule="evenodd"

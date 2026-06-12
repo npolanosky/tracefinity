@@ -25,9 +25,11 @@ interface Props {
   outlinePoints: Point[]
   outlineRings: Point[][]
   clearanceOverride: number | null
+  spacingOverride: number | null
   materializeError: string | null
   onShapesChange: (shapes: ToolShape[]) => void
   onClearanceChange: (v: number | null) => void
+  onSpacingChange: (v: number | null) => void
   onConvertToPolygon: () => void
 }
 
@@ -43,9 +45,11 @@ export function ShapeDesigner({
   outlinePoints,
   outlineRings,
   clearanceOverride,
+  spacingOverride,
   materializeError,
   onShapesChange,
   onClearanceChange,
+  onSpacingChange,
   onConvertToPolygon,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null)
@@ -395,6 +399,8 @@ export function ShapeDesigner({
           onShapesChange={commitShapes}
           clearanceOverride={clearanceOverride}
           onClearanceChange={onClearanceChange}
+          spacingOverride={spacingOverride}
+          onSpacingChange={onSpacingChange}
           materializeError={materializeError}
           onConvertToPolygon={onConvertToPolygon}
         />

@@ -115,6 +115,7 @@ export interface BinDefaults {
   cutout_depth: number
   cutout_clearance: number
   cutout_chamfer: number
+  tool_spacing: number
   insert_enabled: boolean
   insert_height: number
   insert_clearance: number
@@ -163,6 +164,7 @@ export interface Tool {
   created_at: string | null
   shapes?: ToolShape[] | null
   clearance_override?: number | null
+  spacing_override?: number | null
 }
 
 export type AffineMatrix = [number, number, number, number, number, number]
@@ -196,6 +198,8 @@ export interface ToolSummary {
   review_status: string | null
   needs_cleanup: boolean
   parametric: boolean
+  clearance_override?: number | null
+  spacing_override?: number | null
 }
 
 // --- projects ---

@@ -12,6 +12,8 @@ interface Props {
   onShapesChange: (shapes: ToolShape[]) => void
   clearanceOverride: number | null
   onClearanceChange: (v: number | null) => void
+  spacingOverride: number | null
+  onSpacingChange: (v: number | null) => void
   materializeError: string | null
   onConvertToPolygon: () => void
 }
@@ -47,6 +49,8 @@ export function ShapeListPanel({
   onShapesChange,
   clearanceOverride,
   onClearanceChange,
+  spacingOverride,
+  onSpacingChange,
   materializeError,
   onConvertToPolygon,
 }: Props) {
@@ -213,6 +217,22 @@ export function ShapeListPanel({
         </Field>
         <p className="text-[10px] text-text-muted leading-tight">
           Cutouts grow by this much per side in bins. Leave blank to use each bin&apos;s clearance; set 0 for an exact fit.
+        </p>
+        <Field label="Spacing">
+          <NumberField
+            value={spacingOverride}
+            min={0}
+            max={20}
+            step={0.25}
+            nullable
+            placeholder="bin default"
+            onCommit={(v) => onSpacingChange(v)}
+            onCommitNull={() => onSpacingChange(null)}
+            className={FIELD_CLASS}
+          />
+        </Field>
+        <p className="text-[10px] text-text-muted leading-tight">
+          Extra keep-out air gap when arranging tools in a bin (the cutout itself is unchanged). Use for tools that overhang their cutout.
         </p>
         <p className="text-[10px] text-text-muted leading-tight">
           Holes are carved after all solids are merged.

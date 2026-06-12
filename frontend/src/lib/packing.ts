@@ -29,7 +29,7 @@ interface Bounds {
   maxY: number
 }
 
-function toolBounds(pt: PlacedTool): Bounds {
+export function toolBounds(pt: PlacedTool): Bounds {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
   for (const p of pt.points) {
     minX = Math.min(minX, p.x); minY = Math.min(minY, p.y)
@@ -106,23 +106,41 @@ export interface ArrangeResult {
   unplacedIds: string[]
 }
 
+// per-tool padding inputs, keyed by PlacedTool.tool_id; null/undefined
+// fields fall back to the bin's cutout_clearance / tool_spacing
+export interface ToolPadInfo {
+  clearance?: number | null
+  spacing?: number | null
+}
+
 export function arrangeTools(
   placedTools: PlacedTool[],
   config: BinConfig,
   allowRotation: boolean,
+  toolInfo?: Map<string, ToolPadInfo>,
 ): ArrangeResult | null {
   if (placedTools.length === 0) return null
 
   // distance from bin edge to the bbox must cover wall + clearance (matches
   // the auto-size margin); between two pockets we need both clearances plus
-  // a printable web, so each padded box carries clearance + web/2 per side
+  // a printable web, so each padded box carries clearance + spacing + web/2
+  // per side. spacing is a keep-out air gap for tools that overhang their
+  // cutout; clearance is later baked into the pocket at STL time, so the
+  // finished-pocket gap is spacing_a + spacing_b + web.
   const web = Math.max(1.2, config.wall_thickness)
-  const pad = config.cutout_clearance + web / 2
   const edge = config.wall_thickness + 0.25
+
+  const padById = new Map(placedTools.map((pt) => {
+    const info = toolInfo?.get(pt.tool_id)
+    const clr = info?.clearance ?? config.cutout_clearance
+    const sp = info?.spacing ?? (config.tool_spacing ?? 0)
+    return [pt.id, clr + sp + web / 2]
+  }))
 
   const boundsById = new Map(placedTools.map((pt) => [pt.id, toolBounds(pt)]))
   const items: PackItem[] = placedTools.map((pt) => {
     const b = boundsById.get(pt.id)!
+    const pad = padById.get(pt.id)!
     return { id: pt.id, w: b.maxX - b.minX + 2 * pad, h: b.maxY - b.minY + 2 * pad }
   })
 
@@ -187,6 +205,7 @@ export function arrangeTools(
       bb = { minX: cx - halfH, maxX: cx + halfH, minY: cy - halfW, maxY: cy + halfW }
     }
 
+    const pad = padById.get(pt.id)!
     const dx = edge + placement.x + pad - bb.minX
     const dy = edge + placement.y + pad - bb.minY
     return {

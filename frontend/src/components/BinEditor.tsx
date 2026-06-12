@@ -26,6 +26,7 @@ interface Props {
   smoothLevels?: Map<string, number>
   onSmoothLevelChange?: (toolId: string, level: number) => void
   onDraggingChange?: (dragging: boolean) => void
+  keepOutByPlacementId?: Map<string, number>
 }
 
 type Tool = 'select' | 'text'
@@ -62,6 +63,7 @@ export function BinEditor({
   smoothLevels,
   onSmoothLevelChange,
   onDraggingChange,
+  keepOutByPlacementId,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [selection, setSelection] = useState<Selection>(null)
@@ -562,6 +564,7 @@ export function BinEditor({
         pendingLabelText={pendingText}
         smoothedToolIds={smoothedToolIds}
         smoothLevels={smoothLevels}
+        keepOutByPlacementId={keepOutByPlacementId}
         activeTool={activeTool}
         binWidthMm={binWidthMm}
         binHeightMm={binHeightMm}
