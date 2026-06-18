@@ -51,6 +51,8 @@ docker run -p 3000:3000 -v ./data:/app/storage --user "$(id -u):$(id -g)" ghcr.i
 
 With a remote provider the corrected paper crop is sent to that provider for masking. fal is called with `sync_mode`, so the result is not kept in request history; Replicate API predictions (including the input image) auto-purge after about an hour, which is the only retention control Replicate exposes (it has no API to delete them sooner).
 
+The Docker image supports **linux/amd64**, **linux/arm64**, and **linux/arm/v7**. Apple Silicon Macs run arm64 natively via Docker Desktop. ARM devices need at least 2GB RAM (for U2-Net paper detection), so a Raspberry Pi 4/5 with 4GB+ works but a Pi 3B+ (1GB) does not.
+
 Open http://localhost:3000
 
 By default, Tracefinity uses [IS-Net](https://github.com/xuebinqin/DIS) for local tracing -- no API key needed. Set `GOOGLE_API_KEY` to use Gemini instead. See [Tracing Modes](#tracing-modes) for RAM requirements per model.
