@@ -99,7 +99,7 @@ When no API key is configured, Tracefinity runs a local salient object detection
 
 Paper corner detection runs [U2-Net Portable](https://github.com/xuebinqin/U-2-Net) alongside the tracer. RAM figures include both models. All models load at startup.
 
-**Minimum RAM: 2GB** (IS-Net). BiRefNet Lite needs **8GB**.
+**Minimum RAM: 2GB** (IS-Net). BiRefNet Lite needs **8GB**. See [Resource Requirements](docs/resource-requirements.md) for full details including Docker memory limits and platform support.
 
 BiRefNet General is available as an opt-in GPU tracer. For NVIDIA GPU tracing from
 source, install the optional GPU requirements after the default backend
