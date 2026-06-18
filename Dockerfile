@@ -17,9 +17,9 @@ RUN pnpm run build
 
 FROM python:3.12-slim
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && \
+    apt-get install -y \
     libgl1 \
-    libglib2.0-0 \
     libsm6 \
     libxext6 \
     libxrender1 \
@@ -28,6 +28,7 @@ RUN apt-get update && apt-get install -y \
     nginx \
     supervisor \
     git \
+    && (apt-get install -y libglib2.0-0t64 2>/dev/null || apt-get install -y libglib2.0-0) \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
