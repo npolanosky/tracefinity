@@ -161,28 +161,33 @@ def get_tool_namer(api_key: Optional[str] = None) -> Optional[ToolNamer]:
     treat naming as strictly optional.
     """
     from app.config import settings
+    from app.services.app_config import app_config
 
+    label_model = app_config.effective("gemini_label_model")
     if api_key:
-        return GeminiToolNamer(api_key=api_key, model=settings.gemini_label_model)
-    if settings.openrouter_api_key:
+        return GeminiToolNamer(api_key=api_key, model=label_model)
+    if app_config.effective("openrouter_api_key"):
         return GeminiToolNamer(
-            model=settings.gemini_label_model,
-            openrouter_key=settings.openrouter_api_key,
+            model=label_model,
+            openrouter_key=app_config.effective("openrouter_api_key"),
             openrouter_model=settings.openrouter_label_model,
         )
-    if settings.google_api_key:
-        return GeminiToolNamer(api_key=settings.google_api_key, model=settings.gemini_label_model)
-    if settings.ollama_base_url:
-        return OllamaToolNamer(settings.ollama_base_url, settings.ollama_label_model)
+    if app_config.effective("google_api_key"):
+        return GeminiToolNamer(api_key=app_config.effective("google_api_key"), model=label_model)
+    if app_config.effective("ollama_base_url"):
+        return OllamaToolNamer(
+            app_config.effective("ollama_base_url"),
+            app_config.effective("ollama_label_model"),
+        )
     return None
 
 
 def tool_naming_available() -> bool:
     """True when the server can name tools without a user-supplied key."""
-    from app.config import settings
+    from app.services.app_config import app_config
 
     return bool(
-        settings.google_api_key
-        or settings.openrouter_api_key
-        or settings.ollama_base_url
+        app_config.effective("google_api_key")
+        or app_config.effective("openrouter_api_key")
+        or app_config.effective("ollama_base_url")
     )

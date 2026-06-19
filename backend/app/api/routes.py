@@ -25,6 +25,7 @@ from app.models.schemas import (
     CornersResponse,
     DetectCornersRequest,
     DetectCornersResponse,
+    AppConfigUpdate,
     TraceRequest,
     TraceResponse,
     PolygonsRequest,
@@ -656,6 +657,22 @@ async def set_corners(request: Request, session_id: str, req: CornersRequest, us
 async def get_version(request: Request):
     """app version, injected at Docker build time via APP_VERSION."""
     return {"version": os.getenv("APP_VERSION", "dev")}
+
+
+@router.get("/config")
+async def get_config(request: Request):
+    """effective server config (secrets masked to a configured flag)."""
+    from app.services.app_config import app_config
+    return app_config.public()
+
+
+@router.put("/config", response_model=StatusResponse)
+async def update_config(request: Request, body: AppConfigUpdate):
+    """persist server config to config.json. Omitted fields are unchanged;
+    an explicit empty string clears a field back to its env/default."""
+    from app.services.app_config import app_config
+    app_config.update(body.model_dump(exclude_unset=True))
+    return StatusResponse(status="ok")
 
 
 @router.get("/api-keys")

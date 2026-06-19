@@ -249,6 +249,16 @@ class StatusResponse(BaseModel):
     status: str
 
 
+class AppConfigUpdate(BaseModel):
+    # all optional; an explicit "" clears a field (reverts to env/default),
+    # an omitted field is left unchanged
+    google_api_key: str | None = None
+    openrouter_api_key: str | None = None
+    ollama_base_url: str | None = None
+    ollama_label_model: str | None = None
+    gemini_label_model: str | None = None
+
+
 # --- tool library ---
 
 class ToolShape(BaseModel):
