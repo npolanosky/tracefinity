@@ -405,6 +405,15 @@ class NameToolsResponse(BaseModel):
     labels: dict[str, str]  # polygon_id -> generated name
 
 
+class NameToolRequest(BaseModel):
+    api_key: str | None = None  # optional per-request key when no server key is set
+    apply: bool = True  # persist the name to the tool (False = suggest only)
+
+
+class NameToolResponse(BaseModel):
+    name: str | None  # generated name, or None if it could not be named
+
+
 # --- bin projects ---
 
 ProjectStatus = Literal["active", "ready_to_print", "printed", "archived"]

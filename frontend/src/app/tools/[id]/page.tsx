@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { Loader2, Check, Download, Folder } from 'lucide-react'
-import { getTool, updateTool, autoRotateTool, getToolSvgUrl, getImageUrl, listProjects, ApiError } from '@/lib/api'
+import { Loader2, Check, Download, Folder, Sparkles } from 'lucide-react'
+import { getTool, updateTool, autoRotateTool, getToolSvgUrl, getImageUrl, listProjects, nameTool, getAvailableKeys, ApiError } from '@/lib/api'
 import { rotateGeometry } from '@/lib/geometry'
 import { useDebouncedSave } from '@/hooks/useDebouncedSave'
 import { useProjectSource } from '@/hooks/useProjectSource'
@@ -26,6 +26,8 @@ export default function ToolPage() {
   const [error, setError] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [autoRotating, setAutoRotating] = useState(false)
+  const [namingAvailable, setNamingAvailable] = useState(false)
+  const [naming, setNaming] = useState(false)
   const [showSourceImage, setShowSourceImage] = useState(false)
   const [sourceImageOpacity, setSourceImageOpacity] = useState(0.6)
   const [materializeError, setMaterializeError] = useState<string | null>(null)
@@ -62,7 +64,22 @@ export default function ToolPage() {
       }
     }
     load()
+    getAvailableKeys().then(k => setNamingAvailable(k.tool_naming)).catch(() => {})
   }, [toolId])
+
+  const handleAutoName = useCallback(async () => {
+    if (naming) return
+    setNaming(true)
+    try {
+      // suggest-only: fill the field and let the normal debounced save persist it
+      const suggested = await nameTool(toolId, { apply: false })
+      if (suggested) setName(suggested)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'auto-name failed')
+    } finally {
+      setNaming(false)
+    }
+  }, [toolId, naming])
 
   const { saving, saved } = useDebouncedSave(
     async () => {
@@ -229,6 +246,17 @@ export default function ToolPage() {
           {saved && <Check className="w-3 h-3 text-green-400" />}
           {saving ? 'Saving...' : saved ? 'Saved' : ''}
         </div>
+        {namingAvailable && (
+          <button
+            onClick={handleAutoName}
+            disabled={naming}
+            className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-accent-muted text-accent hover:bg-accent-muted/80 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
+            title="Auto-name from the tool's photo"
+          >
+            {naming ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+            Auto-name
+          </button>
+        )}
         <a
           href={getToolSvgUrl(toolId)}
           download

@@ -5,10 +5,10 @@ import { useRouter } from 'next/navigation'
 import { ImageUploader } from '@/components/ImageUploader'
 import { ConfirmModal } from '@/components/ConfirmModal'
 import { SectionHeader } from '@/components/SectionHeader'
-import { uploadImage, listTools, listBins, listProjects, deleteTool, deleteBin, deleteProject, createBin, createProject, createTool, getImageUrl } from '@/lib/api'
+import { uploadImage, listTools, listBins, listProjects, deleteTool, deleteBin, deleteProject, createBin, createProject, createTool, getImageUrl, nameTool, getAvailableKeys } from '@/lib/api'
 import type { ToolSummary, BinSummary, BinPreviewTool, BinProjectSummary, Point, ToolImageContext, AffineMatrix, ProjectStatus } from '@/types'
 import { polygonPathData } from '@/lib/svg'
-import { Trash2, Package, Plus, Loader2, Grid3X3, Folder, Shapes } from 'lucide-react'
+import { Trash2, Package, Plus, Loader2, Grid3X3, Folder, Shapes, Sparkles } from 'lucide-react'
 import { Alert } from '@/components/Alert'
 import { PhotoIllustration, CornersIllustration, TraceIllustration, OrganiseIllustration } from '@/components/OnboardingIllustrations'
 import { GRID_UNIT } from '@/lib/constants'
@@ -235,6 +235,8 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true)
   const { deleteTarget: deleteModal, requestDelete, clearDelete } = useDeleteConfirmation<{ type: 'tool' | 'bin' | 'project'; id: string }>()
   const [creatingBin, setCreatingBin] = useState<string | null>(null)
+  const [namingAvailable, setNamingAvailable] = useState(false)
+  const [namingToolId, setNamingToolId] = useState<string | null>(null)
   const [nameModal, setNameModal] = useState<{ toolIds?: string[] } | null>(null)
   const [projectModalOpen, setProjectModalOpen] = useState(false)
   const [projectSearch, setProjectSearch] = useState('')
@@ -319,6 +321,21 @@ export default function HomePage() {
       // ignore
     } finally {
       setLoading(false)
+    }
+    getAvailableKeys().then(k => setNamingAvailable(k.tool_naming)).catch(() => {})
+  }
+
+  async function handleNameTool(id: string) {
+    if (namingToolId) return
+    setNamingToolId(id)
+    try {
+      const name = await nameTool(id, { apply: true })
+      if (name) setToolsList(prev => prev.map(t => (t.id === id ? { ...t, name } : t)))
+      else setError('Could not name this tool (the model returned no name)')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'auto-name failed')
+    } finally {
+      setNamingToolId(null)
     }
   }
 
@@ -634,6 +651,20 @@ export default function HomePage() {
                           </div>
                         </div>
                         <div className="absolute right-0 top-0 flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                          {namingAvailable && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleNameTool(tool.id) }}
+                              disabled={namingToolId === tool.id}
+                              className="p-1 text-text-muted hover:text-accent hover:bg-accent-muted rounded-[7px] transition-colors cursor-pointer"
+                              title="Auto-name from photo"
+                            >
+                              {namingToolId === tool.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Sparkles className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          )}
                           <button
                             onClick={(e) => { e.stopPropagation(); setNameModal({ toolIds: [tool.id] }) }}
                             disabled={creatingBin === tool.id}
