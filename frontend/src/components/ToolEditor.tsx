@@ -245,6 +245,50 @@ export function ToolEditor({ points, fingerHoles, interiorRings, smoothed, smoot
     return () => svg.removeEventListener('wheel', handleWheel)
   }, [vbW, vbH, vbX, vbY])
 
+  // pinch-to-zoom (two touch pointers)
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg) return
+    const pts = new Map<number, { x: number; y: number }>()
+    let startDist = 0
+    let startZoom = 1
+    const dist = () => {
+      const v = [...pts.values()]
+      return Math.hypot(v[0].x - v[1].x, v[0].y - v[1].y)
+    }
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') return
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      if (pts.size === 2) {
+        startDist = dist()
+        startZoom = zoomRef.current
+        setDragging(null) // cancel any single-finger drag once a pinch starts
+      }
+    }
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch' || !pts.has(e.pointerId)) return
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      if (pts.size === 2 && startDist > 0) {
+        e.preventDefault()
+        setZoom(Math.min(20, Math.max(0.5, startZoom * (dist() / startDist))))
+      }
+    }
+    const onUp = (e: PointerEvent) => {
+      pts.delete(e.pointerId)
+      if (pts.size < 2) startDist = 0
+    }
+    svg.addEventListener('pointerdown', onDown)
+    svg.addEventListener('pointermove', onMove, { passive: false })
+    svg.addEventListener('pointerup', onUp)
+    svg.addEventListener('pointercancel', onUp)
+    return () => {
+      svg.removeEventListener('pointerdown', onDown)
+      svg.removeEventListener('pointermove', onMove)
+      svg.removeEventListener('pointerup', onUp)
+      svg.removeEventListener('pointercancel', onUp)
+    }
+  }, [])
+
   // space key for pan mode
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -756,11 +800,11 @@ export function ToolEditor({ points, fingerHoles, interiorRings, smoothed, smoot
 
   useEffect(() => {
     if (dragging) {
-      window.addEventListener('mousemove', handleMouseMove)
-      window.addEventListener('mouseup', handleMouseUp)
+      window.addEventListener('pointermove', handleMouseMove)
+      window.addEventListener('pointerup', handleMouseUp)
       return () => {
-        window.removeEventListener('mousemove', handleMouseMove)
-        window.removeEventListener('mouseup', handleMouseUp)
+        window.removeEventListener('pointermove', handleMouseMove)
+        window.removeEventListener('pointerup', handleMouseUp)
       }
     }
   }, [dragging, handleMouseMove, handleMouseUp])
@@ -812,8 +856,8 @@ export function ToolEditor({ points, fingerHoles, interiorRings, smoothed, smoot
     : 'Cutout'
 
   return (
-    <div className="h-full w-full relative">
-      {/* canvas fills entire area */}
+    <div className="h-full w-full relative flex flex-col lg:block">
+      {/* canvas fills entire area (desktop) / sits below the toolbar band (mobile) */}
       <ToolEditorCanvas
         svgRef={svgRef}
         zvbX={zvbX}
@@ -855,7 +899,7 @@ export function ToolEditor({ points, fingerHoles, interiorRings, smoothed, smoot
           breadcrumb / projects panels (left-[330px]) so it never overlaps and
           intercepts their clicks. The band is click-through; only the panel
           itself catches pointer events. */}
-      <div className="absolute top-14 lg:top-3.5 left-3.5 lg:left-[330px] right-3.5 z-20 flex justify-center pointer-events-none">
+      <div className="order-1 lg:order-none relative lg:absolute lg:top-3.5 lg:left-[330px] lg:right-3.5 z-20 flex justify-center flex-shrink-0 bg-surface lg:bg-transparent border-b border-border lg:border-0 pointer-events-auto lg:pointer-events-none">
         <div className="glass-toolbar px-2 py-1 max-w-full pointer-events-auto">
         <ToolEditorToolbar
           editMode={editMode}

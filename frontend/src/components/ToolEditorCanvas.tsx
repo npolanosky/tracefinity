@@ -85,16 +85,16 @@ export function ToolEditorCanvas({
 
   return (
     <>
-      {/* SVG canvas - full bleed */}
-      <div className="absolute inset-0">
+      {/* SVG canvas - below the toolbar on mobile (in flow), full-bleed on desktop */}
+      <div className="relative flex-1 min-h-0 order-2 lg:order-none lg:absolute lg:inset-0 lg:flex-none">
         <svg
           ref={svgRef}
           viewBox={`${zvbX} ${zvbY} ${zvbW} ${zvbH}`}
           preserveAspectRatio="xMidYMid meet"
           className={`w-full h-full ${isCutoutMode ? 'cursor-crosshair' : 'cursor-default'}`}
-          style={{ overflow: 'hidden', backgroundColor: 'var(--color-inset)' }}
+          style={{ overflow: 'hidden', backgroundColor: 'var(--color-inset)', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' }}
           onClick={handleBackgroundClick}
-          onMouseDown={handleSvgMouseDown}
+          onPointerDown={handleSvgMouseDown}
         >
           {/* background fill */}
           <rect x={zvbX} y={zvbY} width={zvbW} height={zvbH} fill="var(--color-inset)" />
@@ -173,7 +173,7 @@ export function ToolEditorCanvas({
                   cx={hx} cy={hy} r={9 / zoom}
                   fill="#1e293b" stroke="rgb(72, 168, 214)" strokeWidth={2 / zoom}
                   className={vertical ? 'cursor-ew-resize' : 'cursor-ns-resize'}
-                  onMouseDown={onAxisMouseDown}
+                  onPointerDown={onAxisMouseDown}
                   onClick={(e) => e.stopPropagation()}
                 />
               </g>
@@ -240,7 +240,7 @@ export function ToolEditorCanvas({
               stroke={editMode === 'delete-vertex' ? 'rgb(185, 28, 28)' : 'rgb(72, 168, 214)'}
               strokeWidth={2 / zoom}
               className={editMode === 'delete-vertex' ? 'cursor-pointer' : 'cursor-move'}
-              onMouseDown={handleVertexMouseDown(idx)}
+              onPointerDown={handleVertexMouseDown(idx)}
               onClick={stopClick}
             />
           ))}
@@ -295,7 +295,7 @@ export function ToolEditorCanvas({
                         width={cornerSize} height={cornerSize}
                         fill="transparent"
                         className="cursor-rotate"
-                        onMouseDown={handleRotatePolygonMouseDown}
+                        onPointerDown={handleRotatePolygonMouseDown}
                         onClick={stopClick}
                       />
                     </g>
@@ -349,7 +349,7 @@ export function ToolEditorCanvas({
                       cx={c.x} cy={c.y} r={handleR}
                       fill="#1e293b" stroke="rgb(90, 180, 222)" strokeWidth={2 * s}
                       className="cursor-nwse-resize"
-                      onMouseDown={handleResizeMouseDown(fh.id, i)}
+                      onPointerDown={handleResizeMouseDown(fh.id, i)}
                       onClick={stopClick}
                     />
                   ))}
@@ -363,7 +363,7 @@ export function ToolEditorCanvas({
                     r={hr}
                     fill="rgb(90, 180, 222)" stroke="white" strokeWidth={2 * s}
                     className="cursor-rotate"
-                    onMouseDown={handleHoleRotateMouseDown(fh.id)}
+                    onPointerDown={handleHoleRotateMouseDown(fh.id)}
                     onClick={stopClick}
                   />
                   <text
@@ -383,7 +383,7 @@ export function ToolEditorCanvas({
                   cx={x + resizeOffset} cy={y} r={12 * s}
                   fill="rgb(90, 180, 222)" stroke="white" strokeWidth={2 * s}
                   className="cursor-ew-resize"
-                  onMouseDown={handleResizeMouseDown(fh.id)}
+                  onPointerDown={handleResizeMouseDown(fh.id)}
                   onClick={stopClick}
                 />
                 {shape === 'square' && <>
@@ -397,7 +397,7 @@ export function ToolEditorCanvas({
                     r={hr}
                     fill="rgb(90, 180, 222)" stroke="white" strokeWidth={2 * s}
                     className="cursor-rotate"
-                    onMouseDown={handleHoleRotateMouseDown(fh.id)}
+                    onPointerDown={handleHoleRotateMouseDown(fh.id)}
                     onClick={stopClick}
                   />
                   <text

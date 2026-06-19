@@ -46,7 +46,7 @@ export function CutoutOverlay({ holes, zoom = 1, interactive, selectedId, editMo
                 cx={x} cy={y} r={r}
                 fill={fill} stroke={stroke} strokeWidth={strokeWidth}
                 className={cursor}
-                onMouseDown={interactive && onMouseDown ? (e) => onMouseDown(fh.id, e) : undefined}
+                onPointerDown={interactive && onMouseDown ? (e) => onMouseDown(fh.id, e) : undefined}
                 onClick={interactive && onClick ? onClick : undefined}
               />
             )}
@@ -62,7 +62,7 @@ export function CutoutOverlay({ holes, zoom = 1, interactive, selectedId, editMo
                 x={left} y={top} width={w} height={h}
                 fill={fill} stroke={stroke} strokeWidth={strokeWidth}
                 className={cursor}
-                onMouseDown={interactive && onMouseDown ? (e) => onMouseDown(fh.id, e) : undefined}
+                onPointerDown={interactive && onMouseDown ? (e) => onMouseDown(fh.id, e) : undefined}
                 onClick={interactive && onClick ? onClick : undefined}
               />
             )}
@@ -71,7 +71,7 @@ export function CutoutOverlay({ holes, zoom = 1, interactive, selectedId, editMo
                 d={`M ${left} ${top} H ${right} V ${bottom - filletR} Q ${right} ${bottom} ${right - filletR} ${bottom} H ${left + filletR} Q ${left} ${bottom} ${left} ${bottom - filletR} V ${top} Z`}
                 fill={fill} stroke={stroke} strokeWidth={strokeWidth}
                 className={cursor}
-                onMouseDown={interactive && onMouseDown ? (e) => onMouseDown(fh.id, e) : undefined}
+                onPointerDown={interactive && onMouseDown ? (e) => onMouseDown(fh.id, e) : undefined}
                 onClick={interactive && onClick ? onClick : undefined}
               />
             )}

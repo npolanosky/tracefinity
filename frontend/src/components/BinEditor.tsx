@@ -427,11 +427,11 @@ export function BinEditor({
 
   useEffect(() => {
     if (dragging) {
-      window.addEventListener('mousemove', handleMouseMove)
-      window.addEventListener('mouseup', handleMouseUp)
+      window.addEventListener('pointermove', handleMouseMove)
+      window.addEventListener('pointerup', handleMouseUp)
       return () => {
-        window.removeEventListener('mousemove', handleMouseMove)
-        window.removeEventListener('mouseup', handleMouseUp)
+        window.removeEventListener('pointermove', handleMouseMove)
+        window.removeEventListener('pointerup', handleMouseUp)
       }
     }
   }, [dragging, handleMouseMove, handleMouseUp])
@@ -485,11 +485,11 @@ export function BinEditor({
   const marqueeActive = marquee !== null
   useEffect(() => {
     if (!marqueeActive) return
-    window.addEventListener('mousemove', handleMarqueeMove)
-    window.addEventListener('mouseup', handleMarqueeUp)
+    window.addEventListener('pointermove', handleMarqueeMove)
+    window.addEventListener('pointerup', handleMarqueeUp)
     return () => {
-      window.removeEventListener('mousemove', handleMarqueeMove)
-      window.removeEventListener('mouseup', handleMarqueeUp)
+      window.removeEventListener('pointermove', handleMarqueeMove)
+      window.removeEventListener('pointerup', handleMarqueeUp)
     }
   }, [marqueeActive, handleMarqueeMove, handleMarqueeUp])
 
