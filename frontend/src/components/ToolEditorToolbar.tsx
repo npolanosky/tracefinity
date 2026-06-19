@@ -84,7 +84,7 @@ export function ToolEditorToolbar({
             title="Select and drag vertices / cutouts"
           >
             <MousePointer2 className="w-4 h-4" />
-            Select
+            <span className="hidden sm:inline">Select</span>
           </button>
           <button
             onClick={() => setEditMode('add-vertex')}
@@ -95,7 +95,7 @@ export function ToolEditorToolbar({
             disabled={smoothed}
           >
             <Plus className="w-4 h-4" />
-            Add point
+            <span className="hidden sm:inline">Add point</span>
           </button>
           <button
             onClick={() => setEditMode('delete-vertex')}
@@ -106,7 +106,7 @@ export function ToolEditorToolbar({
             disabled={smoothed || displayPointsCount <= 3}
           >
             <Minus className="w-4 h-4" />
-            Remove
+            <span className="hidden sm:inline">Remove</span>
           </button>
           <div className="relative">
             <button

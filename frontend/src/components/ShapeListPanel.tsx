@@ -77,7 +77,7 @@ export function ShapeListPanel({
   }
 
   return (
-    <div className="flex flex-col gap-2 w-[230px] max-h-full overflow-y-auto">
+    <div className="flex flex-col gap-2 w-full lg:w-[230px] max-h-full overflow-y-auto">
       {/* add buttons */}
       <div className="glass-toolbar px-2 py-1.5 flex items-center gap-1">
         <button

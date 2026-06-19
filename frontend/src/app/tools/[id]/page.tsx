@@ -217,7 +217,7 @@ export default function ToolPage() {
   const isParametric = tool.shapes != null
 
   return (
-    <div className={`h-[calc(100vh-44px)] relative overflow-hidden${photoActive ? ' editor-photo-active' : ''}`}>
+    <div className={`h-[calc(100dvh-44px)] relative overflow-hidden${photoActive ? ' editor-photo-active' : ''}`}>
       {/* floating breadcrumb panel */}
       <div className="absolute top-3.5 left-3.5 z-20 glass-toolbar px-3 py-1.5 flex items-center gap-3">
         <Breadcrumb segments={[
@@ -239,7 +239,7 @@ export default function ToolPage() {
         </a>
       </div>
 
-      <div className="absolute top-14 left-3.5 z-20 glass-toolbar px-3 py-2 min-w-[220px] max-w-[280px]">
+      <div className="hidden lg:block absolute top-14 left-3.5 z-20 glass-toolbar px-3 py-2 min-w-[220px] max-w-[280px]">
         <div className="flex items-center gap-1.5 text-[10px] font-semibold text-text-muted uppercase tracking-[1.5px]">
           <Folder className="w-3 h-3" />
           Projects

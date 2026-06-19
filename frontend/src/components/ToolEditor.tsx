@@ -855,7 +855,7 @@ export function ToolEditor({ points, fingerHoles, interiorRings, smoothed, smoot
           breadcrumb / projects panels (left-[330px]) so it never overlaps and
           intercepts their clicks. The band is click-through; only the panel
           itself catches pointer events. */}
-      <div className="absolute top-3.5 left-[330px] right-3.5 z-20 flex justify-center pointer-events-none">
+      <div className="absolute top-14 lg:top-3.5 left-3.5 lg:left-[330px] right-3.5 z-20 flex justify-center pointer-events-none">
         <div className="glass-toolbar px-2 py-1 max-w-full pointer-events-auto">
         <ToolEditorToolbar
           editMode={editMode}

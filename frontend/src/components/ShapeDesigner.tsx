@@ -391,7 +391,7 @@ export function ShapeDesigner({
       </div>
 
       {/* shape list panel: right edge */}
-      <div className="absolute top-[60px] right-3.5 bottom-3.5 z-20">
+      <div className="absolute z-20 inset-x-3.5 bottom-3.5 max-h-[40%] lg:inset-x-auto lg:top-[60px] lg:right-3.5 lg:bottom-3.5 lg:max-h-none">
         <ShapeListPanel
           shapes={shapes}
           selectedId={selectedId}
