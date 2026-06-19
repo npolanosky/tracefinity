@@ -634,14 +634,11 @@ async def set_corners(request: Request, session_id: str, req: CornersRequest, us
     if ds_ratio < 1.0:
         scale_factor /= ds_ratio
 
-    # original upload is no longer needed
-    orig = _abs(session.original_image_path)
-    if orig:
-        Path(orig).unlink(missing_ok=True)
-
+    # keep the (already downscaled) original so the user can navigate back to
+    # the Corners step to review the photo/outline or re-adjust and re-correct;
+    # it is removed with the session on delete.
     up = _user_path(user_id)
     session.corrected_image_path = _rel(output_path, up)
-    session.original_image_path = None
     session.corners = req.corners
     session.paper_size = req.paper_size
     session.scale_factor = scale_factor

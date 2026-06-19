@@ -33,7 +33,7 @@ make dev  # starts backend (:8000) and frontend (:4001) concurrently
 ## Principles
 
 - Coordinate systems differ across layers (see docs/gotchas.md). SVG/layout Y is down; manifold3d Y is up. Always negate Y when crossing that boundary.
-- Images are downscaled to max 2048px on upload and after perspective correction. Original uploads are deleted after correction. `scale_factor` must be adjusted by the downscale ratio.
+- Images are downscaled to max 2048px on upload and after perspective correction. The (downscaled) original is retained after correction so the user can navigate back to the Corners step to review/re-adjust; it is removed with the session on delete. `scale_factor` must be adjusted by the downscale ratio.
 - Paper is for scale only. Tools can overflow the paper edges. The full visible area beyond the paper is included in the corrected image.
 - Masks: tools BLACK, background WHITE. `_trace_mask()` handles both alpha and RGB masks.
 - Tool polygons are stored in px on the trace page, converted to mm (via `scale_factor`) when saved as Tools. Placed tools in bins are already in mm -- don't re-scale.
