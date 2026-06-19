@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useDebouncedSave } from '@/hooks/useDebouncedSave'
-import { Loader2, Copy, Upload, Download, Check, ChevronDown, ChevronRight, Sparkles, X } from 'lucide-react'
+import { Loader2, Copy, Upload, Download, Check, ChevronDown, ChevronRight, Sparkles, X, RefreshCw, AlertTriangle } from 'lucide-react'
 import { PaperCornerEditor } from '@/components/PaperCornerEditor'
 import { PolygonEditor } from '@/components/PolygonEditor'
 import { SessionInfo } from '@/components/SessionInfo'
@@ -46,6 +46,8 @@ export default function TracePage() {
   const [corners, setLocalCorners] = useState<Point[]>([])
   const [cornersAutoDetected, setCornersAutoDetected] = useState(false)
   const [redetecting, setRedetecting] = useState(false)
+  const [detectAttempt, setDetectAttempt] = useState<number | null>(null)
+  const [detectFailed, setDetectFailed] = useState(false)
   const [paperSize, setPaperSize] = useState<PaperSize>(DEFAULT_PAPER_SIZE)
   const [imageUrl, setImageUrl] = useState<string>('')
   const [correctedImageUrl, setCorrectedImageUrl] = useState<string>('')
@@ -144,22 +146,38 @@ export default function TracePage() {
 
   const singleTracer = tracers.length <= 1
 
-  // re-run detection constrained to the now-known paper size; picking the size
-  // the user actually used lets the backend reject table edges/backgrounds.
-  async function handleSelectPaperSize(size: PaperSize) {
-    setPaperSize(size)
+  // re-run detection. `attempt` undefined = cascade through every strategy and
+  // take the first hit; a number forces a specific fallback rung (the retry
+  // button advances through them so we cover more cases automatically).
+  async function runDetect(size: PaperSize, attempt?: number) {
     setRedetecting(true)
+    setDetectFailed(false)
     try {
-      const detected = await detectCorners(sessionId, size)
+      const { corners: detected, attempt: used } = await detectCorners(sessionId, size, attempt)
       if (detected && detected.length === 4) {
         setLocalCorners(detected)
         setCornersAutoDetected(true)
+        setDetectAttempt(used)
+      } else {
+        setDetectFailed(true)
       }
     } catch {
-      // keep the current corners if re-detection fails
+      setDetectFailed(true)
     } finally {
       setRedetecting(false)
     }
+  }
+
+  // picking the paper size the user actually used lets the backend constrain to
+  // its aspect ratio (and re-runs detection live).
+  function handleSelectPaperSize(size: PaperSize) {
+    setPaperSize(size)
+    runDetect(size)
+  }
+
+  // retry: advance to the next fallback strategy (wraps around)
+  function handleRedetect() {
+    runDetect(paperSize, (detectAttempt ?? -1) + 1)
   }
 
   async function handleCornersSubmit() {
@@ -401,7 +419,15 @@ export default function TracePage() {
           {step === 'corners' && (
             <div className="space-y-3">
               <CornersHint />
-              {cornersAutoDetected ? (
+              {detectFailed ? (
+                <div className="flex items-start gap-1.5 text-xs text-amber-300">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                  <p>
+                    Couldn&apos;t find the paper automatically.{' '}
+                    <span className="text-text-muted">Drag the corners to match it, or tap Re-detect to try other settings.</span>
+                  </p>
+                </div>
+              ) : cornersAutoDetected ? (
                 <div className="flex items-start gap-1.5 text-xs text-green-400">
                   <Check className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                   <p>
@@ -445,6 +471,16 @@ export default function TracePage() {
                   Picking your sheet re-detects the corners using its known proportions.
                 </p>
               </div>
+
+              <button
+                onClick={handleRedetect}
+                disabled={redetecting}
+                className="btn-secondary w-full py-1.5 text-xs inline-flex items-center justify-center gap-1.5 disabled:opacity-60"
+                title="Try detecting the paper again with different settings"
+              >
+                {redetecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                Re-detect paper
+              </button>
             </div>
           )}
 

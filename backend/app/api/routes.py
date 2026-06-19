@@ -574,7 +574,7 @@ async def upload_image(request: Request, image: UploadFile, user_id: str = Depen
     image_path = up / "uploads" / f"{session_id}{ext}"
     image_path.write_bytes(content)
 
-    corners = image_processor.detect_paper_corners(str(image_path))
+    corners, _ = image_processor.detect_paper_corners(str(image_path))
     corner_points = [Point(x=c[0], y=c[1]) for c in corners] if corners else None
 
     user_sessions.set(session_id, Session(
@@ -603,14 +603,14 @@ async def detect_corners(request: Request, session_id: str, req: DetectCornersRe
     if not session or not session.original_image_path:
         raise HTTPException(status_code=404, detail="session not found")
 
-    detected = image_processor.detect_paper_corners(
-        _abs(session.original_image_path), req.paper_size
+    detected, strategy = image_processor.detect_paper_corners(
+        _abs(session.original_image_path), req.paper_size, req.attempt
     )
     corner_points = [Point(x=x, y=y) for x, y in detected] if detected else None
     if corner_points:
         session.corners = corner_points
         user_sessions.set(session_id, session)
-    return DetectCornersResponse(corners=corner_points)
+    return DetectCornersResponse(corners=corner_points, attempt=strategy)
 
 
 @router.post("/sessions/{session_id}/corners", response_model=CornersResponse)

@@ -60,10 +60,12 @@ class CornersResponse(BaseModel):
 
 class DetectCornersRequest(BaseModel):
     paper_size: PaperSize | None = None
+    attempt: int | None = None  # None = cascade all strategies; N = a specific rung (retry)
 
 
 class DetectCornersResponse(BaseModel):
     corners: list[Point] | None
+    attempt: int | None = None  # which strategy rung produced the result
 
 
 class TraceRequest(BaseModel):
