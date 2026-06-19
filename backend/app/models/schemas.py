@@ -76,6 +76,9 @@ class PolygonsRequest(BaseModel):
 class BinParams(BaseModel):
     grid_x: int = 2
     grid_y: int = 2
+    grid_unit_x_mm: float = 42.0
+    grid_unit_y_mm: float = 42.0
+    grid_unit_locked: bool = True
     height_units: int = 4
     magnets: bool = True
     magnet_diameter: float = 6.0
@@ -96,6 +99,13 @@ class BinParams(BaseModel):
     def validate_grid(cls, v: int) -> int:
         if v < 1 or v > 10:
             raise ValueError("grid size must be between 1 and 10")
+        return v
+
+    @field_validator("grid_unit_x_mm", "grid_unit_y_mm")
+    @classmethod
+    def validate_grid_unit(cls, v: float) -> float:
+        if v < 30.0 or v > 100.0:
+            raise ValueError("grid unit must be between 30 and 100mm")
         return v
 
     @field_validator("height_units")

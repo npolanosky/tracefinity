@@ -1,9 +1,13 @@
 import type { BinConfig, BinDefaults } from '@/types'
 import { getSettings, saveSettings } from './settings'
+import { DEFAULT_GRID_UNIT } from './constants'
 
 export const FACTORY_BIN_CONFIG: BinConfig = {
   grid_x: 2,
   grid_y: 2,
+  grid_unit_x_mm: DEFAULT_GRID_UNIT,
+  grid_unit_y_mm: DEFAULT_GRID_UNIT,
+  grid_unit_locked: true,
   height_units: 4,
   magnets: true,
   magnet_diameter: 6.0,

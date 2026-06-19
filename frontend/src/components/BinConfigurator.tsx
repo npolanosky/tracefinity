@@ -1,8 +1,9 @@
 'use client'
 
-import { Info } from 'lucide-react'
+import { Info, Link2, Link2Off } from 'lucide-react'
 import type { BinConfig } from '@/types'
 import { NumberField } from '@/components/NumberField'
+import { SNAP_FRACTIONS, type SnapMode } from '@/lib/constants'
 
 const GF_HEIGHT_UNIT = 7.0
 const GF_BASE_HEIGHT = 4.75
@@ -20,6 +21,8 @@ interface Props {
   onChange: (config: BinConfig) => void
   autoSize?: boolean
   onAutoSizeChange?: (v: boolean) => void
+  snapMode?: SnapMode
+  onSnapModeChange?: (v: SnapMode) => void
 }
 
 function HelpTip({ text }: { text: string }) {
@@ -125,15 +128,36 @@ function SliderRow({
   )
 }
 
-export function BinConfigurator({ config, onChange, autoSize, onAutoSizeChange }: Props) {
+export function BinConfigurator({ config, onChange, autoSize, onAutoSizeChange, snapMode, onSnapModeChange }: Props) {
   function update(partial: Partial<BinConfig>) {
     onChange({ ...config, ...partial })
   }
 
+  function setGridUnit(axis: 'x' | 'y', v: number) {
+    if (config.grid_unit_locked) {
+      update({ grid_unit_x_mm: v, grid_unit_y_mm: v })
+    } else if (axis === 'x') {
+      update({ grid_unit_x_mm: v })
+    } else {
+      update({ grid_unit_y_mm: v })
+    }
+  }
+
+  function toggleLock() {
+    const locked = !config.grid_unit_locked
+    if (locked) {
+      // re-locking: snap Y to X
+      update({ grid_unit_locked: true, grid_unit_y_mm: config.grid_unit_x_mm })
+    } else {
+      update({ grid_unit_locked: false })
+    }
+  }
+
   const maxCutoutDepth = calcMaxCutoutDepth(config.height_units, config.stacking_lip)
-  const binWidth = config.grid_x * 42
-  const binDepth = config.grid_y * 42
+  const binWidth = config.grid_x * config.grid_unit_x_mm
+  const binDepth = config.grid_y * config.grid_unit_y_mm
   const needsSplit = config.bed_size > 0 && (binWidth > config.bed_size || binDepth > config.bed_size)
+  const nonStandardGrid = config.grid_unit_x_mm < 38 || config.grid_unit_y_mm < 38
 
   return (
     <div className="space-y-0">
@@ -146,9 +170,89 @@ export function BinConfigurator({ config, onChange, autoSize, onAutoSizeChange }
         />
       )}
 
+      <div className="border-t border-border mt-2 pt-1">
+        <div className="flex items-center justify-between py-2">
+          <span className="text-xs text-text-primary tracking-[0.3px]">
+            Base Grid
+            <HelpTip text="Cell size of the target baseplate. 42mm is stock gridfinity. Custom baseplates may use other sizes (e.g. 37mm)." />
+          </span>
+          <button
+            type="button"
+            onClick={toggleLock}
+            title={config.grid_unit_locked ? 'Unlock to set X/Y separately' : 'Lock X = Y'}
+            className="inline-flex items-center gap-1 text-[11px] text-text-muted hover:text-text-primary px-1.5 py-0.5 rounded"
+          >
+            {config.grid_unit_locked ? <Link2 className="w-3.5 h-3.5" /> : <Link2Off className="w-3.5 h-3.5" />}
+            <span>{config.grid_unit_locked ? 'Locked' : 'Free'}</span>
+          </button>
+        </div>
+
+        {config.grid_unit_locked ? (
+          <SliderRow
+            label="Grid Unit"
+            help="Width of one grid cell in mm. Default 42mm matches stock gridfinity baseplates."
+            value={config.grid_unit_x_mm}
+            min={30}
+            max={100}
+            step={0.5}
+            unit="mm"
+            onChange={(v) => setGridUnit('x', v)}
+          />
+        ) : (
+          <>
+            <SliderRow
+              label="Grid X"
+              help="Cell width along the X axis (mm)."
+              value={config.grid_unit_x_mm}
+              min={30}
+              max={100}
+              step={0.5}
+              unit="mm"
+              onChange={(v) => setGridUnit('x', v)}
+            />
+            <SliderRow
+              label="Grid Y"
+              help="Cell depth along the Y axis (mm)."
+              value={config.grid_unit_y_mm}
+              min={30}
+              max={100}
+              step={0.5}
+              unit="mm"
+              onChange={(v) => setGridUnit('y', v)}
+            />
+          </>
+        )}
+
+        {nonStandardGrid && (
+          <div className="text-[11px] text-amber-400 mt-1 leading-tight">
+            Grid &lt; 38mm: bin won&apos;t fit stock 42mm baseplates.
+          </div>
+        )}
+
+        {onSnapModeChange && (
+          <div className="relative flex items-center justify-between py-2">
+            <span className="text-xs text-text-primary tracking-[0.3px]">
+              Snap
+              <HelpTip text="Editor drag-snap precision. Fixed values stay constant; fractional values divide the current grid cell." />
+            </span>
+            <select
+              value={snapMode ?? 'fixed-5'}
+              onChange={(e) => onSnapModeChange(e.target.value as SnapMode)}
+              className="h-7 bg-elevated text-xs text-text-primary rounded px-2 focus:outline-none"
+            >
+              {SNAP_FRACTIONS.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+
       <SliderRow
         label="Grid Width"
-        help="Bin width in gridfinity units. Each unit is 42mm."
+        help={`Bin width in cells. Each cell is ${config.grid_unit_x_mm.toFixed(1)}mm.`}
         value={config.grid_x}
         min={1}
         max={10}
@@ -159,7 +263,7 @@ export function BinConfigurator({ config, onChange, autoSize, onAutoSizeChange }
 
       <SliderRow
         label="Grid Depth"
-        help="Bin depth in gridfinity units. Each unit is 42mm."
+        help={`Bin depth in cells. Each cell is ${config.grid_unit_y_mm.toFixed(1)}mm.`}
         value={config.grid_y}
         min={1}
         max={10}

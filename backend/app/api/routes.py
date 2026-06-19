@@ -494,8 +494,8 @@ def _run_generate(
     insert_stl_url = None
     warning = None
     if getattr(gen_req, 'insert_enabled', False) and scaled:
-        bin_width = gen_req.grid_x * GF_GRID
-        bin_depth = gen_req.grid_y * GF_GRID
+        bin_width = gen_req.grid_x * gen_req.grid_unit_x_mm
+        bin_depth = gen_req.grid_y * gen_req.grid_unit_y_mm
         offset_x = -bin_width / 2
         offset_y = -bin_depth / 2
         try:
@@ -1661,6 +1661,9 @@ def generate_bin_stl(request: Request, bin_id: str, user_id: str = Depends(get_u
     gen_req = GenerateRequest(
         grid_x=bc.grid_x,
         grid_y=bc.grid_y,
+        grid_unit_x_mm=bc.grid_unit_x_mm,
+        grid_unit_y_mm=bc.grid_unit_y_mm,
+        grid_unit_locked=bc.grid_unit_locked,
         height_units=bc.height_units,
         magnets=bc.magnets,
         magnet_diameter=bc.magnet_diameter,

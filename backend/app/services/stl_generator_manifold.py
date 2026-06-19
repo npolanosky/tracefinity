@@ -152,6 +152,13 @@ def _build_stacking_lip_notch(outer_w: float, outer_h: float):
     return mf.Manifold.batch_boolean([l0, l1, l2, l3, l4], mf.OpType.Add)
 
 
+def _grid_units(config) -> tuple[float, float]:
+    """Per-axis cell size in mm. Falls back to stock 42mm for legacy configs."""
+    gux = getattr(config, "grid_unit_x_mm", GF_GRID) or GF_GRID
+    guy = getattr(config, "grid_unit_y_mm", GF_GRID) or GF_GRID
+    return float(gux), float(guy)
+
+
 def _build_shell(config: GenerateRequest):
     """Solid bin shell: base units + wall body to wall_top_z.
 
@@ -163,17 +170,20 @@ def _build_shell(config: GenerateRequest):
     import manifold3d as mf
 
     grid_x, grid_y = config.grid_x, config.grid_y
+    gux, guy = _grid_units(config)
     height = config.height_units * GF_HEIGHT_UNIT
-    outer_w = grid_x * GF_GRID - 0.5
-    outer_h = grid_y * GF_GRID - 0.5
+    outer_w = grid_x * gux - 0.5
+    outer_h = grid_y * guy - 0.5
     r = GF_CORNER_R
 
+    cell_w = gux - 0.5
+    cell_h = guy - 0.5
     base_units = []
     for iy in range(grid_y):
         for ix in range(grid_x):
-            cx = (ix - (grid_x - 1) / 2.0) * GF_GRID
-            cy = (iy - (grid_y - 1) / 2.0) * GF_GRID
-            unit = _build_base_unit(GF_GRID - 0.5, GF_GRID - 0.5)
+            cx = (ix - (grid_x - 1) / 2.0) * gux
+            cy = (iy - (grid_y - 1) / 2.0) * guy
+            unit = _build_base_unit(cell_w, cell_h)
             base_units.append(unit.translate((cx, cy, 0.0)))
 
     cs_wall = _cs(_rounded_rect_pts(outer_w, outer_h, r))
@@ -272,41 +282,66 @@ def _make_filleted_rectangle_cutter(
     )
 
 
+def _magnet_inset(config) -> float | None:
+    """Per-side magnet inset from cell centre. Clamps to fit the smaller of
+    the X/Y cells with ~1mm clearance to the cell edge. Returns None when the
+    cell is too small to host a magnet hole at all."""
+    gux, guy = _grid_units(config)
+    g_min = min(gux, guy)
+    radius = getattr(config, "magnet_diameter", MAGNET_DIAMETER) / 2
+    margin = 1.0
+    max_inset = (g_min - 0.5) / 2 - radius - margin
+    if max_inset <= 0:
+        return None
+    return min(13.0, max_inset)
+
+
 def _make_magnet_holes(config: GenerateRequest):
-    """Batch union of all magnet hole cylinders (4 per grid cell, or corners only)."""
+    """Batch union of all magnet hole cylinders (4 per grid cell, or corners only).
+    Returns None when the grid is too small for magnets to fit cleanly."""
     import manifold3d as mf
 
     diameter = getattr(config, "magnet_diameter", MAGNET_DIAMETER)
     depth = getattr(config, "magnet_depth", MAGNET_DEPTH)
     corners_only = getattr(config, "magnet_corners_only", False)
 
+    inset = _magnet_inset(config)
+    if inset is None:
+        logger.warning("magnet holes skipped: grid_unit too small for magnet diameter")
+        return None
+
+    gux, guy = _grid_units(config)
     r = diameter / 2
     mag = mf.Manifold.cylinder(depth + 0.01, r, circular_segments=ROUND_SEGS)
+
+    offsets = [(-inset, -inset), (inset, -inset), (inset, inset), (-inset, inset)]
 
     # corners that sit on the outer bin boundary
     outer_corners = set()
     if corners_only:
         for ix, iy, dx, dy in [
-            (0, 0, -13.0, -13.0),
-            (config.grid_x - 1, 0, 13.0, -13.0),
-            (config.grid_x - 1, config.grid_y - 1, 13.0, 13.0),
-            (0, config.grid_y - 1, -13.0, 13.0),
+            (0, 0, -inset, -inset),
+            (config.grid_x - 1, 0, inset, -inset),
+            (config.grid_x - 1, config.grid_y - 1, inset, inset),
+            (0, config.grid_y - 1, -inset, inset),
         ]:
-            cx = (ix - (config.grid_x - 1) / 2.0) * GF_GRID
-            cy = (iy - (config.grid_y - 1) / 2.0) * GF_GRID
+            cx = (ix - (config.grid_x - 1) / 2.0) * gux
+            cy = (iy - (config.grid_y - 1) / 2.0) * guy
             outer_corners.add((round(cx + dx, 4), round(cy + dy, 4)))
 
     holes = []
     for iy in range(config.grid_y):
         for ix in range(config.grid_x):
-            cx = (ix - (config.grid_x - 1) / 2.0) * GF_GRID
-            cy = (iy - (config.grid_y - 1) / 2.0) * GF_GRID
-            for dx, dy in [(-13.0, -13.0), (13.0, -13.0), (13.0, 13.0), (-13.0, 13.0)]:
+            cx = (ix - (config.grid_x - 1) / 2.0) * gux
+            cy = (iy - (config.grid_y - 1) / 2.0) * guy
+            for dx, dy in offsets:
                 pos = (round(cx + dx, 4), round(cy + dy, 4))
                 if corners_only and pos not in outer_corners:
                     continue
                 holes.append(mag.translate((pos[0], pos[1], 0.0)))
 
+    if not holes:
+        return None
     return mf.Manifold.batch_boolean(holes, mf.OpType.Add)
 
 
@@ -892,8 +927,9 @@ class ManifoldSTLGenerator:
 
         t0 = time.monotonic()
 
-        bin_width = config.grid_x * GF_GRID
-        bin_depth = config.grid_y * GF_GRID
+        gux, guy = _grid_units(config)
+        bin_width = config.grid_x * gux
+        bin_depth = config.grid_y * guy
         offset_x = -bin_width / 2
         offset_y = -bin_depth / 2
         wall_top_z = config.height_units * GF_HEIGHT_UNIT
@@ -903,8 +939,8 @@ class ManifoldSTLGenerator:
         bin_body = _build_shell(config)
         logger.info("shell: %.2fs", time.monotonic() - t1)
 
-        outer_w = config.grid_x * GF_GRID - 0.5
-        outer_h = config.grid_y * GF_GRID - 0.5
+        outer_w = config.grid_x * gux - 0.5
+        outer_h = config.grid_y * guy - 0.5
 
         # raised rim ("collar"): a hollow perimeter wall extending the bin wall
         # above the floor face (wall_top_z) without filling the interior.  A
@@ -938,6 +974,8 @@ class ManifoldSTLGenerator:
         if config.stacking_lip:
             lip_total = LIP_D0 + LIP_D1 + LIP_D2
             notch_depth_below = LIP_D3 + LIP_D4
+            outer_w = config.grid_x * gux - 0.5
+            outer_h = config.grid_y * guy - 0.5
             cs_wall_lip = _cs(_rounded_rect_pts(outer_w, outer_h, GF_CORNER_R))
             lip_solid = mf.Manifold.extrude(cs_wall_lip, lip_total).translate(
                 (0.0, 0.0, lip_base_z)
@@ -954,7 +992,9 @@ class ManifoldSTLGenerator:
         cutters: list = []
 
         if config.magnets:
-            cutters.append(_make_magnet_holes(config))
+            mag_cutter = _make_magnet_holes(config)
+            if mag_cutter is not None:
+                cutters.append(mag_cutter)
 
         pocket_depth = 5
         if polygons:
@@ -1098,11 +1138,11 @@ class ManifoldSTLGenerator:
         return True
 
     @staticmethod
-    def _compute_split_points(total_mm: float, grid_count: int, bed_size: float) -> list[float]:
+    def _compute_split_points(total_mm: float, grid_count: int, bed_size: float, grid_unit: float) -> list[float]:
         """Split points relative to bin centre for one axis."""
         if bed_size <= 0 or total_mm <= bed_size:
             return []
-        max_units = max(1, int(bed_size // GF_GRID))
+        max_units = max(1, int(bed_size // grid_unit))
         import math as _m
         num_pieces = _m.ceil(grid_count / max_units)
         base = grid_count // num_pieces
@@ -1111,7 +1151,7 @@ class ManifoldSTLGenerator:
         points = []
         pos = -total_mm / 2
         for s in sizes[:-1]:
-            pos += s * GF_GRID
+            pos += s * grid_unit
             points.append(pos)
         return points
 
@@ -1128,15 +1168,16 @@ class ManifoldSTLGenerator:
         import manifold3d as mf
         import math
 
-        bin_width = config.grid_x * GF_GRID
-        bin_depth = config.grid_y * GF_GRID
+        gux, guy = _grid_units(config)
+        bin_width = config.grid_x * gux
+        bin_depth = config.grid_y * guy
 
         fits_diagonal = (bin_width + bin_depth) / math.sqrt(2) <= bed_size
         if fits_diagonal:
             return []
 
-        x_cuts = self._compute_split_points(bin_width, config.grid_x, bed_size)
-        y_cuts = self._compute_split_points(bin_depth, config.grid_y, bed_size)
+        x_cuts = self._compute_split_points(bin_width, config.grid_x, bed_size, gux)
+        y_cuts = self._compute_split_points(bin_depth, config.grid_y, bed_size, guy)
 
         if not x_cuts and not y_cuts:
             return []

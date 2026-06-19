@@ -3,7 +3,7 @@
 import { RefObject } from 'react'
 import type { PlacedTool, TextLabel } from '@/types'
 import { polygonPathData, smoothPathData, simplifyPolygon, smoothEpsilon } from '@/lib/svg'
-import { GRID_UNIT, DISPLAY_SCALE } from '@/lib/constants'
+import { DEFAULT_GRID_UNIT, DISPLAY_SCALE } from '@/lib/constants'
 import { CutoutOverlay } from '@/components/CutoutOverlay'
 
 type Tool = 'select' | 'text'
@@ -20,6 +20,8 @@ interface Props {
   displayHeight: number
   gridX: number
   gridY: number
+  gridUnitX?: number
+  gridUnitY?: number
   wallThickness: number
   placedTools: PlacedTool[]
   selection: Selection
@@ -65,6 +67,8 @@ export function BinEditorCanvas({
   displayHeight,
   gridX,
   gridY,
+  gridUnitX = DEFAULT_GRID_UNIT,
+  gridUnitY = DEFAULT_GRID_UNIT,
   wallThickness,
   placedTools,
   selection,
@@ -117,8 +121,8 @@ export function BinEditorCanvas({
           {Array.from({ length: gridX + 1 }).map((_, i) => (
             <line
               key={`v${i}`}
-              x1={i * GRID_UNIT * DISPLAY_SCALE} y1={0}
-              x2={i * GRID_UNIT * DISPLAY_SCALE} y2={displayHeight}
+              x1={i * gridUnitX * DISPLAY_SCALE} y1={0}
+              x2={i * gridUnitX * DISPLAY_SCALE} y2={displayHeight}
               stroke="rgba(255,255,255,0.1)" strokeWidth={1}
               strokeDasharray={i === 0 || i === gridX ? undefined : '4,4'}
             />
@@ -126,8 +130,8 @@ export function BinEditorCanvas({
           {Array.from({ length: gridY + 1 }).map((_, i) => (
             <line
               key={`h${i}`}
-              x1={0} y1={i * GRID_UNIT * DISPLAY_SCALE}
-              x2={displayWidth} y2={i * GRID_UNIT * DISPLAY_SCALE}
+              x1={0} y1={i * gridUnitY * DISPLAY_SCALE}
+              x2={displayWidth} y2={i * gridUnitY * DISPLAY_SCALE}
               stroke="rgba(255,255,255,0.1)" strokeWidth={1}
               strokeDasharray={i === 0 || i === gridY ? undefined : '4,4'}
             />
