@@ -51,6 +51,8 @@ from app.models.schemas import (
     SaveToolsResponse,
     NameToolsRequest,
     NameToolsResponse,
+    NameToolRequest,
+    NameToolResponse,
     BinProject,
     BinProjectDetail,
     BinProjectListResponse,
@@ -81,7 +83,7 @@ from app.services.tool_store import ToolStore
 from app.services.bin_store import BinStore
 from app.services.project_store import ProjectStore
 from app.services.bin_service import sync_placed_tools, resolve_clearance, placed_levels
-from app.services.image_service import generate_tool_thumbnail, crop_polygon_png
+from app.services.image_service import generate_tool_thumbnail, crop_polygon_png, tool_crop_png
 from app.services import shape_compiler
 from app.services.tool_namer import get_tool_namer, tool_naming_available
 from app.services.tracer_registry import TRACER_LABELS, tracer_kind, validate_tracer_ids
@@ -1139,6 +1141,37 @@ async def update_tool(request: Request, tool_id: str, req: ToolUpdateRequest, us
         tool.spacing_override = req.spacing_override
     user_tools.set(tool_id, tool)
     return tool
+
+
+@router.post("/tools/{tool_id}/name", response_model=NameToolResponse)
+async def name_tool(request: Request, tool_id: str, body: NameToolRequest = NameToolRequest(), user_id: str = Depends(get_user_id)):
+    """Auto-name a single saved tool from its image (best-effort).
+
+    Uses the tool's thumbnail (or a crop of its source image) and the
+    configured namer. Persists the name unless apply=False (suggest-only,
+    for the editor where the user saves explicitly)."""
+    _, user_tools, _ = get_stores(user_id)
+    tool = user_tools.get(tool_id)
+    if not tool:
+        raise HTTPException(status_code=404, detail="tool not found")
+
+    namer = get_tool_namer(body.api_key)
+    if namer is None:
+        raise HTTPException(status_code=400, detail="no tool-naming backend is configured")
+
+    crop = tool_crop_png(
+        tool,
+        _abs(tool.source_image_path) if tool.source_image_path else None,
+        _abs(tool.thumbnail_path) if tool.thumbnail_path else None,
+    )
+    if crop is None:
+        raise HTTPException(status_code=400, detail="no usable image for this tool")
+
+    name = await namer.name(crop)
+    if name and body.apply:
+        tool.name = name
+        user_tools.set(tool_id, tool)
+    return NameToolResponse(name=name)
 
 
 @router.post("/tools/{tool_id}/auto-rotate")

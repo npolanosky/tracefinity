@@ -27,6 +27,72 @@ def crop_polygon_png(src_img: Image.Image, poly_points, pad: int = 20, max_dim: 
         return None
 
 
+def png_bytes_from_file(path: str, max_dim: int = 384) -> bytes | None:
+    """Load an image file (e.g. a tool thumbnail) as downsized RGB PNG bytes,
+    suitable to hand to a namer. None on any failure."""
+    try:
+        img = Image.open(path)
+        longest = max(img.width, img.height)
+        if longest > max_dim:
+            scale = max_dim / longest
+            img = img.resize((int(img.width * scale), int(img.height * scale)), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.convert("RGB").save(buf, "PNG")
+        return buf.getvalue()
+    except Exception:
+        return None
+
+
+def tool_crop_png(
+    tool, source_path: str | None, thumbnail_path: str | None, max_dim: int = 384
+) -> bytes | None:
+    """Best single-tool image for naming a saved tool.
+
+    Prefers the existing thumbnail crop; falls back to cropping the tool's
+    bounding box out of its source image by inverting the stored image->mm
+    affine. Returns PNG bytes or None."""
+    if thumbnail_path and Path(thumbnail_path).exists():
+        png = png_bytes_from_file(thumbnail_path, max_dim)
+        if png:
+            return png
+
+    t = getattr(tool, "source_image_transform", None)
+    pts = getattr(tool, "points", None)
+    if not source_path or not Path(source_path).exists() or not t or len(t) != 6 or not pts:
+        return None
+    a, b, c, d, e, f = t
+    det = a * e - b * d
+    if abs(det) < 1e-9:
+        return None
+
+    def to_px(mx: float, my: float) -> tuple[float, float]:
+        # inverse of [mx,my] = [a*x+b*y+c, d*x+e*y+f]
+        return (
+            (e * (mx - c) - b * (my - f)) / det,
+            (-d * (mx - c) + a * (my - f)) / det,
+        )
+    try:
+        px = [to_px(p.x, p.y) for p in pts]
+        img = Image.open(source_path)
+        pad = 20
+        left = max(0, int(min(x for x, _ in px)) - pad)
+        top = max(0, int(min(y for _, y in px)) - pad)
+        right = min(img.width, int(max(x for x, _ in px)) + pad)
+        bottom = min(img.height, int(max(y for _, y in px)) + pad)
+        if right <= left or bottom <= top:
+            return None
+        crop = img.crop((left, top, right, bottom))
+        longest = max(crop.width, crop.height)
+        if longest > max_dim:
+            scale = max_dim / longest
+            crop = crop.resize((int(crop.width * scale), int(crop.height * scale)), Image.LANCZOS)
+        buf = io.BytesIO()
+        crop.convert("RGB").save(buf, "PNG")
+        return buf.getvalue()
+    except Exception:
+        return None
+
+
 def generate_tool_thumbnail(
     src_img: Image.Image, poly_points, tool_id: str, output_dir: Path
 ) -> str | None:

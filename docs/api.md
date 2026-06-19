@@ -19,6 +19,7 @@
 - `GET /api/tools/{id}` - get tool
 - `PUT /api/tools/{id}` - update tool (name, points, finger_holes)
 - `POST /api/tools/{id}/auto-rotate` - compute optimal rotation angle (degrees) to minimise bounding box
+- `POST /api/tools/{id}/name` - auto-name a saved tool from its thumbnail/source crop (best-effort; `apply=false` to suggest without persisting)
 - `DELETE /api/tools/{id}` - delete tool
 
 ## Bins

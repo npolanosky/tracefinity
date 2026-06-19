@@ -297,6 +297,20 @@ export async function autoRotateTool(toolId: string): Promise<{ angle: number }>
   return fetchApi(`/api/tools/${toolId}/auto-rotate`, { method: 'POST' })
 }
 
+export async function nameTool(
+  toolId: string,
+  opts: { apply?: boolean; apiKey?: string } = {},
+): Promise<string | null> {
+  const res = await fetchApi<{ name: string | null }>(`/api/tools/${toolId}/name`, {
+    method: 'POST',
+    body: JSON.stringify({
+      apply: opts.apply ?? true,
+      api_key: opts.apiKey || null,
+    }),
+  })
+  return res.name
+}
+
 export async function deleteTool(toolId: string): Promise<void> {
   await fetchApi(`/api/tools/${toolId}`, { method: 'DELETE' })
 }
