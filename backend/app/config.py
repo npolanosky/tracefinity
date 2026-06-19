@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     openrouter_label_model: str = "google/gemini-2.0-flash-001"
     gemini_image_model: str = "gemini-3.1-flash-image-preview"
     gemini_label_model: str = "gemini-2.0-flash"
+    # optional local Ollama for tool naming (vision model, e.g. llava)
+    ollama_base_url: Optional[str] = None  # e.g. http://192.168.2.78:11434
+    ollama_label_model: str = "llava"
     max_upload_mb: int = 20
     log_level: str = "INFO"
     proxy_secret: Optional[str] = None

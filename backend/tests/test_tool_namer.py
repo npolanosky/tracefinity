@@ -6,6 +6,7 @@ import pytest
 from app.config import settings
 from app.services.tool_namer import (
     GeminiToolNamer,
+    OllamaToolNamer,
     ToolNamer,
     clean_name,
     get_tool_namer,
@@ -37,8 +38,27 @@ class TestGetToolNamer:
     def test_none_when_no_backend(self, monkeypatch):
         monkeypatch.setattr(settings, "google_api_key", None)
         monkeypatch.setattr(settings, "openrouter_api_key", None)
+        monkeypatch.setattr(settings, "ollama_base_url", None)
         assert get_tool_namer() is None
         assert tool_naming_available() is False
+
+    def test_ollama_when_only_ollama(self, monkeypatch):
+        monkeypatch.setattr(settings, "google_api_key", None)
+        monkeypatch.setattr(settings, "openrouter_api_key", None)
+        monkeypatch.setattr(settings, "ollama_base_url", "http://192.168.2.78:11434")
+        monkeypatch.setattr(settings, "ollama_label_model", "llava")
+        namer = get_tool_namer()
+        assert isinstance(namer, OllamaToolNamer)
+        assert namer.base_url == "http://192.168.2.78:11434"
+        assert namer.model == "llava"
+        assert tool_naming_available() is True
+
+    def test_openrouter_preferred_over_ollama(self, monkeypatch):
+        monkeypatch.setattr(settings, "google_api_key", None)
+        monkeypatch.setattr(settings, "openrouter_api_key", "o")
+        monkeypatch.setattr(settings, "ollama_base_url", "http://x:11434")
+        namer = get_tool_namer()
+        assert isinstance(namer, GeminiToolNamer)
 
     def test_explicit_api_key_takes_precedence(self, monkeypatch):
         monkeypatch.setattr(settings, "google_api_key", None)
