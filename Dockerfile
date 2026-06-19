@@ -38,6 +38,15 @@ COPY backend/requirements.txt ./backend/
 RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
+# Swap CPU onnxruntime for the GPU build so the ONNX tracers (isnet,
+# birefnet-*) run on an NVIDIA GPU. CPU torch is fine — those tracers use
+# onnxruntime, not torch. The [cuda,cudnn] extras ship CUDA 12 / cuDNN 9 as
+# pip wheels, so the slim base only needs the host driver (via
+# nvidia-container-toolkit). onnxruntime-gpu conflicts with onnxruntime, so
+# uninstall first rather than installing requirements-gpu.txt alongside it.
+RUN pip uninstall -y onnxruntime \
+ && pip install --no-cache-dir "onnxruntime-gpu[cuda,cudnn]>=1.23.0"
+
 COPY backend/ ./backend/
 
 # frontend (built)
