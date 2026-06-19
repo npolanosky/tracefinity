@@ -1,0 +1,25 @@
+services:
+  tracefinity:
+    build:
+      context: .
+    image: tracefinity-gpu:local
+    ports:
+      - "3030:3000"          # host 3030 (3000/3001 are taken); container listens on 3000
+    volumes:
+      - tracefinity_data:/app/storage   # named volume; default setup, no host bind
+    environment:
+      DEVELOPMENT_MODE: "1"             # disables PROXY_SECRET auth requirement; LAN/trusted only
+      TRACERS: "birefnet-general,birefnet-lite,isnet"
+      TRACEFINITY_ONNX_PROVIDER: "cuda" # require GPU; fail loud if unavailable
+      CUDA_VISIBLE_DEVICES: "0"         # pin to one GPU (host has a 3060Ti + 2080Ti)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+              # flip "0" to target the 2080Ti vs 3060Ti depending on nvidia-smi enumeration
+              device_ids: ["0"]
+    restart: unless-stopped
+volumes:
+  tracefinity_data:
