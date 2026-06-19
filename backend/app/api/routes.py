@@ -652,6 +652,12 @@ async def set_corners(request: Request, session_id: str, req: CornersRequest, us
     )
 
 
+@router.get("/version")
+async def get_version(request: Request):
+    """app version, injected at Docker build time via APP_VERSION."""
+    return {"version": os.getenv("APP_VERSION", "dev")}
+
+
 @router.get("/api-keys")
 async def get_available_keys(request: Request):
     """return available tracers and provider info."""

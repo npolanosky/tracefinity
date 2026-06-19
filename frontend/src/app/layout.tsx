@@ -12,6 +12,7 @@ import { GuidedTour } from '@/components/GuidedTour'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { IconButton } from '@/components/IconButton'
 import { ReadinessGate } from '@/components/ReadinessGate'
+import { VersionBadge } from '@/components/VersionBadge'
 
 export default function RootLayout({
   children,
@@ -58,6 +59,7 @@ export default function RootLayout({
             </ErrorBoundary>
           </main>
           <GuidedTour open={showHelp} onClose={() => setShowHelp(false)} />
+          <VersionBadge />
         </QueryClientProvider>
       </body>
     </html>
