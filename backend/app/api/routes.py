@@ -720,7 +720,8 @@ async def trace_tools(request: Request, session_id: str, req: TraceRequest, user
             logging.error("%s provider error: %s", tracer_id, error_msg[:500], exc_info=True)
             raise HTTPException(status_code=502, detail=f"{label} provider error; try again shortly.")
         logging.error("ai tracing failed: %s", error_msg[:500], exc_info=True)
-        detail = f"AI tracing failed ({type(e).__name__}: {error_msg[:200]})"
+        label = TRACER_LABELS.get(tracer_id, tracer_id)
+        detail = f"{label} couldn't trace this image. Try a different tracer (see server logs for details)."
         raise HTTPException(status_code=500, detail=detail)
 
     session.polygons = polygons

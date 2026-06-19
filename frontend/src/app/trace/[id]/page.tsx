@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useDebouncedSave } from '@/hooks/useDebouncedSave'
-import { Loader2, Copy, Upload, Download, Check, ChevronDown, ChevronRight, Sparkles } from 'lucide-react'
+import { Loader2, Copy, Upload, Download, Check, ChevronDown, ChevronRight, Sparkles, X } from 'lucide-react'
 import { PaperCornerEditor } from '@/components/PaperCornerEditor'
 import { PolygonEditor } from '@/components/PolygonEditor'
 import { SessionInfo } from '@/components/SessionInfo'
@@ -466,7 +466,7 @@ export default function TracePage() {
                     <ChevronDown className={`w-3 h-3 text-text-muted transition-transform ${methodOpen ? 'rotate-180' : ''}`} />
                   </button>
                   {methodOpen && (
-                    <div className="absolute left-0 right-0 mt-1 bg-surface border border-border rounded-lg py-1 z-30 shadow-xl">
+                    <div className="absolute left-0 right-0 mt-1 bg-surface border border-border rounded-lg py-1 z-40 shadow-xl">
                       {tracers.map(t => {
                         const active = provider !== 'manual' && selectedTracer === t.id
                         return (
@@ -676,7 +676,20 @@ export default function TracePage() {
             </div>
           )}
 
-          {error && <Alert variant="error">{error}</Alert>}
+          {error && (
+            <div className="relative">
+              <Alert variant="error">
+                <span className="pr-4 block">{error}</span>
+              </Alert>
+              <button
+                onClick={() => setError(null)}
+                aria-label="Dismiss"
+                className="absolute top-1.5 right-1.5 text-text-muted hover:text-text-primary"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="p-3 space-y-2 sticky bottom-0 bg-surface border-t border-border md:static md:border-t-0 md:mt-auto">

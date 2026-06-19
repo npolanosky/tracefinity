@@ -18,6 +18,20 @@ RAM figures are measured in Linux containers with both models loaded. Models loa
 
 Any modern x86-64 processor. All local models use ONNX Runtime on CPU by default. CUDA acceleration is available for NVIDIA GPUs (see README).
 
+## GPU (NVIDIA)
+
+`birefnet-general` is a Swin-Large model and is VRAM-hungry: it needs meaningful
+headroom (realistically an 11GB+ card) on top of the always-resident U2-Net
+paper detector and any other loaded tracers. On an 8GB card it can fail at
+inference with an ONNX `MatMul` `RUNTIME_EXCEPTION` (effectively an out-of-memory
+fault). `birefnet-lite` and `isnet` are far lighter and run comfortably on 8GB.
+
+- Pick a specific GPU with `CUDA_VISIBLE_DEVICES` (e.g. `CUDA_VISIBLE_DEVICES=1`
+  to use the second card). ONNX Runtime always uses visible device 0, so this
+  env var is how you target a larger card.
+- If a GPU inference fault occurs, that tracer now automatically retries on CPU
+  for that image (slower, but it still produces a result instead of erroring).
+
 ARM is supported: the Docker image ships linux/arm64 builds. Raspberry Pi 4/5 with 4GB+ RAM works (IS-Net or a remote tracer).
 
 ## Disk
