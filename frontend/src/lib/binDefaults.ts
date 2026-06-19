@@ -19,6 +19,7 @@ export const FACTORY_BIN_CONFIG: BinConfig = {
   cutout_depth: 20,
   cutout_clearance: 1.0,
   cutout_chamfer: 0,
+  tool_spacing: 0,
   insert_enabled: false,
   insert_height: 1.0,
   insert_clearance: 0.2,

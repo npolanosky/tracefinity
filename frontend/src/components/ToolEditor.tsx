@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { Plus, Circle, Disc, Square, RectangleHorizontal, Fingerprint, ImageIcon, Eye, EyeOff } from 'lucide-react'
 import type { Point, FingerHole, ToolImageContext, AffineMatrix } from '@/types'
-import { simplifyPolygon, smoothEpsilon, simplifyEpsilon, snapToGrid as snapToGridUtil } from '@/lib/svg'
+import { simplifyPolygon, smoothEpsilon, simplifyEpsilon, snapToGrid as snapToGridUtil, axisLock } from '@/lib/svg'
 import { rotateAround, flipAround } from '@/lib/affine'
 import { rotateGeometry, centroidOf } from '@/lib/geometry'
 import {
@@ -42,7 +42,7 @@ interface Props {
 const PADDING_MM = 20
 
 type DragState =
-  | { type: 'vertex'; pointIdx: number }
+  | { type: 'vertex'; pointIdx: number; startPoint: Point }
   | { type: 'hole'; holeId: string; startX: number; startY: number; origX: number; origY: number; mirrorId?: string; onAxis?: boolean }
   | { type: 'resize'; holeId: string; startX: number; startY: number; origRadius: number; origWidth?: number; origHeight?: number; centerX: number; centerY: number; anchorX?: number; anchorY?: number; rotation?: number; mirrorId?: string }
   | { type: 'rotate-hole'; holeId: string; centerX: number; centerY: number; startAngle: number; origRotation: number; mirrorId?: string }
@@ -75,6 +75,7 @@ export function ToolEditor({ points, fingerHoles, interiorRings, smoothed, smoot
   // session-scoped "most accurate available" reference the slider re-derives from
   const baseRef = useRef<Point[] | null>(null)
   if (baseRef.current === null && points.length > 0) baseRef.current = points
+  const [showMeasurements, setShowMeasurements] = useState(false)
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [cutoutOpen, setCutoutOpen] = useState(false)
@@ -489,7 +490,7 @@ export function ToolEditor({ points, fingerHoles, interiorRings, smoothed, smoot
       return
     }
     setSelection({ type: 'vertex', pointIdx })
-    setDragging({ type: 'vertex', pointIdx })
+    setDragging({ type: 'vertex', pointIdx, startPoint: points[pointIdx] })
   }
 
   const handleEdgeClick = (edgeIdx: number) => (e: React.MouseEvent) => {
@@ -615,15 +616,25 @@ export function ToolEditor({ points, fingerHoles, interiorRings, smoothed, smoot
         if (j === dragging.pointIdx) np = constrainToAxis(np, axis) // seam: stays on axis
         updated[dragging.pointIdx] = np
         if (j !== dragging.pointIdx) updated[j] = reflectPoint(np, axis)
+      } else if (e.shiftKey) {
+        // shift constrains movement to the dominant cardinal axis; the
+        // locked axis stays exactly put, even off-grid
+        const d = axisLock(pos.x - dragging.startPoint.x, pos.y - dragging.startPoint.y)
+        updated[dragging.pointIdx] = {
+          x: d.dx === 0 ? dragging.startPoint.x : snap(dragging.startPoint.x + d.dx),
+          y: d.dy === 0 ? dragging.startPoint.y : snap(dragging.startPoint.y + d.dy),
+        }
       } else {
         updated[dragging.pointIdx] = { x: snap(pos.x), y: snap(pos.y) }
       }
       setDragPoints(updated)
     } else if (dragging.type === 'hole') {
-      const dx = pos.x - dragging.startX
-      const dy = pos.y - dragging.startY
-      let nx = snap(dragging.origX + dx)
-      let ny = snap(dragging.origY + dy)
+      let dx = pos.x - dragging.startX
+      let dy = pos.y - dragging.startY
+      const locked = e.shiftKey
+      if (locked) ({ dx, dy } = axisLock(dx, dy))
+      let nx = locked && dx === 0 ? dragging.origX : snap(dragging.origX + dx)
+      let ny = locked && dy === 0 ? dragging.origY : snap(dragging.origY + dy)
       if (dragging.onAxis && axis) { const c = constrainToAxis({ x: nx, y: ny }, axis); nx = c.x; ny = c.y }
       const twin = mirror && axis && dragging.mirrorId ? reflectPoint({ x: nx, y: ny }, axis) : null
       const updated = currentHoles.map(fh => {
@@ -821,6 +832,7 @@ export function ToolEditor({ points, fingerHoles, interiorRings, smoothed, smoot
         displayPoints={displayPoints}
         smoothed={smoothed}
         interiorRings={displayRings}
+        showMeasurements={showMeasurements}
         points={points}
         editMode={editMode}
         selection={selection}
@@ -867,6 +879,8 @@ export function ToolEditor({ points, fingerHoles, interiorRings, smoothed, smoot
           onSimplifyCommit={commitSimplify}
           simplifyDisabled={mirrorMode}
           nodeCount={points.length}
+          showMeasurements={showMeasurements}
+          setShowMeasurements={setShowMeasurements}
           canUndo={canUndo}
           canRedo={canRedo}
           handleUndo={handleUndo}

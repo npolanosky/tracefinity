@@ -115,6 +115,7 @@ export interface BinDefaults {
   cutout_depth: number
   cutout_clearance: number
   cutout_chamfer: number
+  tool_spacing: number
   insert_enabled: boolean
   insert_height: number
   insert_clearance: number
@@ -126,6 +127,25 @@ export interface BinConfig extends BinDefaults {
 }
 
 // --- tool library ---
+
+export type ToolShapeType = 'rectangle' | 'ellipse' | 'line'
+export type ToolShapeMode = 'add' | 'subtract' | 'guide'
+
+export interface ToolShape {
+  id: string
+  type: ToolShapeType
+  mode: ToolShapeMode
+  x: number
+  y: number
+  rotation: number
+  width?: number | null // rectangle; line length when type="line"
+  height?: number | null
+  corner_radius?: number
+  rx?: number | null // ellipse semi-axes (circle when rx == ry)
+  ry?: number | null
+  // pocket depth in mm from the bin top; add-shapes only, null = bin default
+  depth?: number | null
+}
 
 export interface Tool {
   id: string
@@ -144,6 +164,9 @@ export interface Tool {
   review_status: string | null
   needs_cleanup: boolean
   created_at: string | null
+  shapes?: ToolShape[] | null
+  clearance_override?: number | null
+  spacing_override?: number | null
 }
 
 export type AffineMatrix = [number, number, number, number, number, number]
@@ -176,6 +199,9 @@ export interface ToolSummary {
   project_ids: string[]
   review_status: string | null
   needs_cleanup: boolean
+  parametric: boolean
+  clearance_override?: number | null
+  spacing_override?: number | null
 }
 
 // --- projects ---

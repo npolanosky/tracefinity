@@ -4,15 +4,16 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { Loader2, Check, Download, Folder } from 'lucide-react'
-import { getTool, updateTool, autoRotateTool, getToolSvgUrl, getImageUrl, listProjects } from '@/lib/api'
+import { getTool, updateTool, autoRotateTool, getToolSvgUrl, getImageUrl, listProjects, ApiError } from '@/lib/api'
 import { rotateGeometry } from '@/lib/geometry'
 import { useDebouncedSave } from '@/hooks/useDebouncedSave'
 import { useProjectSource } from '@/hooks/useProjectSource'
 import { projectNameMap } from '@/lib/projectSelectors'
 import { ToolEditor } from '@/components/ToolEditor'
+import { ShapeDesigner } from '@/components/ShapeDesigner'
 import { Alert } from '@/components/Alert'
 import { Breadcrumb } from '@/components/Breadcrumb'
-import type { Tool, Point, FingerHole, AffineMatrix, BinProjectSummary } from '@/types'
+import type { Tool, Point, FingerHole, AffineMatrix, BinProjectSummary, ToolShape } from '@/types'
 
 export default function ToolPage() {
   const params = useParams()
@@ -27,6 +28,7 @@ export default function ToolPage() {
   const [autoRotating, setAutoRotating] = useState(false)
   const [showSourceImage, setShowSourceImage] = useState(false)
   const [sourceImageOpacity, setSourceImageOpacity] = useState(0.45)
+  const [materializeError, setMaterializeError] = useState<string | null>(null)
 
   const sourceImageContext = useMemo(
     () => tool?.image_context
@@ -65,18 +67,52 @@ export default function ToolPage() {
   const { saving, saved } = useDebouncedSave(
     async () => {
       if (!tool) return
-      await updateTool(toolId, {
-        name,
-        points: tool.points,
-        finger_holes: tool.finger_holes,
-        interior_rings: tool.interior_rings,
-        smoothed: tool.smoothed,
-        smooth_level: tool.smooth_level,
-        ...(tool.image_context ? { source_image_transform: tool.image_context.transform } : {}),
-      })
+      if (tool.shapes != null) {
+        const sent = tool.shapes
+        try {
+          const ret = await updateTool(toolId, {
+            name,
+            shapes: sent,
+            clearance_override: tool.clearance_override ?? null,
+            spacing_override: tool.spacing_override ?? null,
+          })
+          setMaterializeError(null)
+          // apply the authoritative materialized outline; only adopt the
+          // recentred shapes when no newer local edit is pending
+          setTool((prev) => {
+            if (!prev || prev.shapes == null) return prev
+            const sameShapes = JSON.stringify(prev.shapes) === JSON.stringify(sent)
+            const nextShapes = sameShapes ? (ret.shapes ?? prev.shapes) : prev.shapes
+            if (
+              JSON.stringify(prev.points) === JSON.stringify(ret.points) &&
+              JSON.stringify(prev.interior_rings) === JSON.stringify(ret.interior_rings) &&
+              JSON.stringify(prev.shapes) === JSON.stringify(nextShapes)
+            ) {
+              return prev
+            }
+            return { ...prev, points: ret.points, interior_rings: ret.interior_rings, shapes: nextShapes }
+          })
+        } catch (err) {
+          if (err instanceof ApiError && err.status === 422) {
+            setMaterializeError(err.message)
+            return
+          }
+          throw err
+        }
+      } else {
+        await updateTool(toolId, {
+          name,
+          points: tool.points,
+          finger_holes: tool.finger_holes,
+          interior_rings: tool.interior_rings,
+          smoothed: tool.smoothed,
+          smooth_level: tool.smooth_level,
+          ...(tool.image_context ? { source_image_transform: tool.image_context.transform } : {}),
+        })
+      }
     },
     [tool, name, toolId],
-    150,
+    300,
     { skipInitial: true }
   )
 
@@ -138,6 +174,29 @@ export default function ToolPage() {
     })
   }, [tool, projects, projectNameById])
 
+  const handleShapesChange = useCallback((shapes: ToolShape[]) => {
+    setTool(prev => prev ? { ...prev, shapes } : null)
+  }, [])
+
+  const handleClearanceChange = useCallback((clearance_override: number | null) => {
+    setTool(prev => prev ? { ...prev, clearance_override } : null)
+  }, [])
+
+  const handleSpacingChange = useCallback((spacing_override: number | null) => {
+    setTool(prev => prev ? { ...prev, spacing_override } : null)
+  }, [])
+
+  const handleConvertToPolygon = useCallback(async () => {
+    if (!window.confirm('Convert to a freeform polygon? The shape parameters are discarded and this cannot be undone.')) return
+    try {
+      const ret = await updateTool(toolId, { shapes: null })
+      setMaterializeError(null)
+      setTool(prev => prev ? { ...prev, shapes: null, points: ret.points, interior_rings: ret.interior_rings } : prev)
+    } catch {
+      // keep the designer open; the next autosave will surface errors
+    }
+  }, [toolId])
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12 gap-2 text-text-muted">
@@ -154,6 +213,8 @@ export default function ToolPage() {
       </div>
     )
   }
+
+  const isParametric = tool.shapes != null
 
   return (
     <div className={`h-[calc(100vh-44px)] relative overflow-hidden${photoActive ? ' editor-photo-active' : ''}`}>
@@ -207,26 +268,41 @@ export default function ToolPage() {
       </div>
 
       {/* editor fills the entire area */}
-      <ToolEditor
-        points={tool.points}
-        fingerHoles={tool.finger_holes}
-        interiorRings={tool.interior_rings}
-        smoothed={tool.smoothed}
-        smoothLevel={tool.smooth_level}
-        sourceImageContext={sourceImageContext}
-        showSourceImage={showSourceImage}
-        onShowSourceImageChange={setShowSourceImage}
-        sourceImageOpacity={sourceImageOpacity}
-        onSourceImageOpacityChange={setSourceImageOpacity}
-        onImageTransformChange={handleImageTransformChange}
-        onPointsChange={handlePointsChange}
-        onFingerHolesChange={handleFingerHolesChange}
-        onSmoothedChange={handleSmoothedChange}
-        onSmoothLevelChange={handleSmoothLevelChange}
-        onInteriorRingsChange={handleInteriorRingsChange}
-        onAutoRotate={handleAutoRotate}
-        autoRotating={autoRotating}
-      />
+      {isParametric ? (
+        <ShapeDesigner
+          shapes={tool.shapes!}
+          outlinePoints={tool.points}
+          outlineRings={tool.interior_rings}
+          clearanceOverride={tool.clearance_override ?? null}
+          spacingOverride={tool.spacing_override ?? null}
+          materializeError={materializeError}
+          onShapesChange={handleShapesChange}
+          onClearanceChange={handleClearanceChange}
+          onSpacingChange={handleSpacingChange}
+          onConvertToPolygon={handleConvertToPolygon}
+        />
+      ) : (
+        <ToolEditor
+          points={tool.points}
+          fingerHoles={tool.finger_holes}
+          interiorRings={tool.interior_rings}
+          smoothed={tool.smoothed}
+          smoothLevel={tool.smooth_level}
+          sourceImageContext={sourceImageContext}
+          showSourceImage={showSourceImage}
+          onShowSourceImageChange={setShowSourceImage}
+          sourceImageOpacity={sourceImageOpacity}
+          onSourceImageOpacityChange={setSourceImageOpacity}
+          onImageTransformChange={handleImageTransformChange}
+          onPointsChange={handlePointsChange}
+          onFingerHolesChange={handleFingerHolesChange}
+          onSmoothedChange={handleSmoothedChange}
+          onSmoothLevelChange={handleSmoothLevelChange}
+          onInteriorRingsChange={handleInteriorRingsChange}
+          onAutoRotate={handleAutoRotate}
+          autoRotating={autoRotating}
+        />
+      )}
     </div>
   )
 }

@@ -2,9 +2,10 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import type { Point, Polygon } from '@/types'
-import { Undo2, Redo2, Trash2, Plus, Minus, Move } from 'lucide-react'
-import { polygonPathData } from '@/lib/svg'
+import { Undo2, Redo2, Trash2, Plus, Minus, Move, Ruler } from 'lucide-react'
+import { polygonPathData, axisLock } from '@/lib/svg'
 import { useHistory } from '@/hooks/useHistory'
+import { MeasurementOverlay } from '@/components/MeasurementOverlay'
 
 interface Props {
   imageUrl: string
@@ -15,13 +16,15 @@ interface Props {
   onIncludedChange?: (ids: Set<string>) => void
   hovered?: string | null
   onHoveredChange?: (id: string | null) => void
+  /** mm per image px (session.scale_factor); enables the measurement toggle */
+  scaleFactor?: number | null
 }
 // base sizes for SVG UI elements, designed for ~800px viewBox width
 const BASE_VIEW_WIDTH = 800
 
 type EditMode = 'select' | 'vertex' | 'add-vertex' | 'delete-vertex'
 type DragState =
-  | { type: 'vertex'; polyId: string; pointIdx: number }
+  | { type: 'vertex'; polyId: string; pointIdx: number; startPoint: Point }
   | null
 
 export function PolygonEditor({
@@ -33,6 +36,7 @@ export function PolygonEditor({
   onIncludedChange,
   hovered,
   onHoveredChange,
+  scaleFactor,
 }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -54,6 +58,7 @@ export function PolygonEditor({
 
   const [editMode, setEditMode] = useState<EditMode>('select')
   const [dragging, setDragging] = useState<DragState>(null)
+  const [showMeasurements, setShowMeasurements] = useState(false)
 
   const { set: pushHistory, undo: handleUndo, redo: handleRedo, canUndo, canRedo } = useHistory<Polygon[]>(
     polygons,
@@ -176,10 +181,16 @@ export function PolygonEditor({
     }
   }
 
+  const startVertexDrag = (polyId: string, pointIdx: number) => {
+    const poly = polygons.find(p => p.id === polyId)
+    const startPoint = poly?.points[pointIdx] ?? { x: 0, y: 0 }
+    setDragging({ type: 'vertex', polyId, pointIdx, startPoint })
+  }
+
   const handleVertexMouseDown = (polyId: string, pointIdx: number) => (e: React.MouseEvent) => {
     e.stopPropagation()
     if (editable && (editMode === 'vertex' || editMode === 'select')) {
-      setDragging({ type: 'vertex', polyId, pointIdx })
+      startVertexDrag(polyId, pointIdx)
     }
   }
 
@@ -187,7 +198,7 @@ export function PolygonEditor({
     e.stopPropagation()
     e.preventDefault()
     if (editable && (editMode === 'vertex' || editMode === 'select')) {
-      setDragging({ type: 'vertex', polyId, pointIdx })
+      startVertexDrag(polyId, pointIdx)
     }
   }
 
@@ -195,7 +206,12 @@ export function PolygonEditor({
     (e: MouseEvent) => {
       if (!dragging) return
 
-      const point = getScaledPoint(e.clientX, e.clientY)
+      let point = getScaledPoint(e.clientX, e.clientY)
+      if (e.shiftKey && dragging.type === 'vertex') {
+        // shift constrains movement to the dominant cardinal axis
+        const d = axisLock(point.x - dragging.startPoint.x, point.y - dragging.startPoint.y)
+        point = { x: dragging.startPoint.x + d.dx, y: dragging.startPoint.y + d.dy }
+      }
 
       if (dragging.type === 'vertex') {
         const updated = polygonsRef.current.map((poly) => {
@@ -353,9 +369,26 @@ export function PolygonEditor({
             </button>
           </div>
 
+          {scaleFactor != null && (
+            <>
+              <div className="h-6 w-px bg-border-subtle" />
+              <button
+                onClick={() => setShowMeasurements(!showMeasurements)}
+                className={`p-2 rounded transition-colors cursor-pointer ${
+                  showMeasurements
+                    ? 'bg-accent-muted text-accent'
+                    : 'hover:bg-border text-text-secondary'
+                }`}
+                title="Show edge lengths and corner angles"
+              >
+                <Ruler className="w-5 h-5" />
+              </button>
+            </>
+          )}
+
           <span className="text-sm text-text-muted">
             {(editMode === 'select' || editMode === 'vertex') && !activeId && 'Click outlines to select tools'}
-            {(editMode === 'select' || editMode === 'vertex') && activeId && 'Drag vertices to adjust the outline'}
+            {(editMode === 'select' || editMode === 'vertex') && activeId && 'Drag vertices to adjust the outline · Shift locks to an axis'}
             {editMode === 'add-vertex' && 'Click on an edge to add a vertex'}
             {editMode === 'delete-vertex' && 'Click a vertex to remove it'}
           </span>
@@ -486,6 +519,15 @@ export function PolygonEditor({
                       />
                     </g>
                   ))}
+
+                {isActive && showMeasurements && scaleFactor != null && (
+                  <MeasurementOverlay
+                    points={poly.points}
+                    holes={poly.interior_rings}
+                    mmPerUnit={scaleFactor}
+                    uiScale={uiScale}
+                  />
+                )}
 
               </g>
             )

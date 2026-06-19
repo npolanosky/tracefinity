@@ -82,6 +82,8 @@ interface Props {
   setSnapGrid: (grid: number) => void
   handleRecenter: () => void
   selectedTool: PlacedTool | null
+  // total tools in the selection; per-tool controls only show when it is 1
+  selectedToolCount: number
   selectedLabel: TextLabel | null
   selectedHole: FingerHole | null
   selectedHoleToolId: string | null
@@ -112,6 +114,7 @@ export function BinEditorToolbar({
   setSnapGrid,
   handleRecenter,
   selectedTool,
+  selectedToolCount,
   selectedLabel,
   selectedHole,
   selectedHoleToolId,
@@ -176,6 +179,23 @@ export function BinEditorToolbar({
         <Maximize2 className="w-3.5 h-3.5" />
         Recenter
       </button>
+
+      {selectedToolCount > 1 && (
+        <>
+          <div className="w-px h-4 bg-glass-border mx-1 flex-shrink-0" />
+          <span className="text-[10px] text-text-muted whitespace-nowrap">
+            {selectedToolCount} tools
+          </span>
+          <button
+            onClick={onRemoveTool}
+            className={`${tbBtn} text-red-400 hover:bg-red-900/20`}
+            aria-label="Remove selected tools"
+            title="Remove all selected tools"
+          >
+            <Trash2 className="w-3 h-3" />
+          </button>
+        </>
+      )}
 
       {selectedTool && (
         <>

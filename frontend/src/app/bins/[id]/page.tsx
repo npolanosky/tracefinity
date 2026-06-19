@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { BinEditor } from '@/components/BinEditor'
 import { BinConfigurator, calcMaxCutoutDepth } from '@/components/BinConfigurator'
@@ -10,7 +10,8 @@ import { getBin, updateBin, generateBinStl, getBinStlUrl, getBinZipUrl, getBinTh
 import { getDefaultBinConfig, resetDefaultBinConfig, saveDefaultBinConfig } from '@/lib/binDefaults'
 import { getSettings, saveSettings } from '@/lib/settings'
 import type { BinConfig, BinData, PlacedTool, TextLabel } from '@/types'
-import { Download, Loader2, Package, ChevronDown, Check } from 'lucide-react'
+import { Download, Loader2, Package, ChevronDown, Check, LayoutGrid, RotateCw, Sparkles } from 'lucide-react'
+import { arrangeTools, type ToolPadInfo } from '@/lib/packing'
 import { Breadcrumb } from '@/components/Breadcrumb'
 import { Alert } from '@/components/Alert'
 import { useDebouncedSave } from '@/hooks/useDebouncedSave'
@@ -63,6 +64,7 @@ export default function BinPage() {
   const doGenerateRef = useRef<() => void>(() => {})
   const [smoothedToolIds, setSmoothedToolIds] = useState<Set<string>>(new Set())
   const [smoothLevels, setSmoothLevels] = useState<Map<string, number>>(new Map())
+  const [toolInfo, setToolInfo] = useState<Map<string, ToolPadInfo>>(new Map())
   const smoothLevelTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   const [autoSize, setAutoSize] = useState(true)
@@ -71,10 +73,26 @@ export default function BinPage() {
   const [defaultsStatus, setDefaultsStatus] = useState<string | null>(null)
   const defaultsStatusTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [snapMode, setSnapModeState] = useState<SnapMode>('fixed-5')
+  const [autoArrange, setAutoArrangeState] = useState(false)
+  const [arrangeRotation, setArrangeRotationState] = useState(true)
+  const [layoutWarning, setLayoutWarning] = useState<string | null>(null)
   const exportRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    setSnapModeState(getSettings().snapMode)
+    const s = getSettings()
+    setSnapModeState(s.snapMode)
+    setAutoArrangeState(s.autoArrange)
+    setArrangeRotationState(s.arrangeRotation)
+  }, [])
+
+  const handleAutoArrangeChange = useCallback((v: boolean) => {
+    setAutoArrangeState(v)
+    saveSettings({ autoArrange: v })
+  }, [])
+
+  const handleArrangeRotationChange = useCallback((v: boolean) => {
+    setArrangeRotationState(v)
+    saveSettings({ arrangeRotation: v })
   }, [])
 
   const handleSnapModeChange = useCallback((m: SnapMode) => {
@@ -123,6 +141,10 @@ export default function BinPage() {
         setConfig(withGridDefaults(data.bin_config))
         setSmoothedToolIds(new Set(tools.filter(t => t.smoothed).map(t => t.id)))
         setSmoothLevels(new Map(tools.map(t => [t.id, t.smooth_level])))
+        setToolInfo(new Map(tools.map(t => [t.id, {
+          clearance: t.clearance_override ?? null,
+          spacing: t.spacing_override ?? null,
+        }])))
       } catch {
         setError('Bin not found')
       } finally {
@@ -232,7 +254,15 @@ export default function BinPage() {
         maxY = Math.max(maxY, p.y)
       }
     }
-    const halfMargin = config.wall_thickness + config.cutout_clearance + 0.25
+    // the widest per-tool clearance + spacing governs the grid fit
+    let maxPad = 0
+    for (const tool of placedTools) {
+      const info = toolInfo.get(tool.tool_id)
+      const clr = info?.clearance ?? config.cutout_clearance
+      const sp = info?.spacing ?? (config.tool_spacing ?? 0)
+      maxPad = Math.max(maxPad, clr + sp)
+    }
+    const halfMargin = config.wall_thickness + maxPad + 0.25
     const toolW = maxX - minX
     const toolH = maxY - minY
     const gux = config.grid_unit_x_mm
@@ -262,7 +292,7 @@ export default function BinPage() {
         ),
       })))
     }
-  }, [autoSize, isDragging, placedTools, config.grid_x, config.grid_y, config.grid_unit_x_mm, config.grid_unit_y_mm, config.wall_thickness, config.cutout_clearance])
+  }, [autoSize, isDragging, placedTools, toolInfo, config.grid_x, config.grid_y, config.grid_unit_x_mm, config.grid_unit_y_mm, config.wall_thickness, config.cutout_clearance, config.tool_spacing])
 
   const handleToggleSmoothed = useCallback(async (toolId: string, smoothed: boolean) => {
     try {
@@ -284,7 +314,23 @@ export default function BinPage() {
     }, 300)
   }, [])
 
+  // pack all placed tools into the smallest grid footprint
+  const runArrange = useCallback((tools: PlacedTool[]) => {
+    const result = arrangeTools(tools, config, arrangeRotation, toolInfo)
+    if (!result) return false
+    setPlacedTools(result.tools)
+    setConfig(prev => (prev.grid_x === result.gridX && prev.grid_y === result.gridY
+      ? prev
+      : { ...prev, grid_x: result.gridX, grid_y: result.gridY }))
+    setLayoutWarning(result.unplacedIds.length > 0
+      ? `${result.unplacedIds.length} tool${result.unplacedIds.length !== 1 ? 's' : ''} did not fit even at ${result.gridX}x${result.gridY} and kept ${result.unplacedIds.length !== 1 ? 'their' : 'its'} position`
+      : null)
+    return true
+  }, [config, arrangeRotation, toolInfo])
+
   const handleAddTool = useCallback((tool: PlacedTool) => {
+    if (autoArrange && runArrange([...placedTools, tool])) return
+
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
     for (const p of tool.points) {
       minX = Math.min(minX, p.x)
@@ -295,7 +341,10 @@ export default function BinPage() {
     const toolW = maxX - minX
     const toolH = maxY - minY
 
-    const margin = 2 * config.wall_thickness + 2 * config.cutout_clearance + 0.5
+    const info = toolInfo.get(tool.tool_id)
+    const clr = info?.clearance ?? config.cutout_clearance
+    const sp = info?.spacing ?? (config.tool_spacing ?? 0)
+    const margin = 2 * config.wall_thickness + 2 * (clr + sp) + 0.5
     const gux = config.grid_unit_x_mm
     const guy = config.grid_unit_y_mm
     const needX = Math.max(config.grid_x, Math.ceil((toolW + margin) / gux))
@@ -322,7 +371,21 @@ export default function BinPage() {
     }
 
     setPlacedTools(prev => [...prev, placed])
-  }, [config.grid_x, config.grid_y, config.grid_unit_x_mm, config.grid_unit_y_mm, config.wall_thickness, config.cutout_clearance])
+  }, [autoArrange, runArrange, placedTools, toolInfo, config.grid_x, config.grid_y, config.grid_unit_x_mm, config.grid_unit_y_mm, config.wall_thickness, config.cutout_clearance, config.tool_spacing])
+
+  // dashed keep-out halo per placement: clearance + spacing beyond the
+  // outline bbox, shown only for tools with a non-zero resolved spacing
+  const keepOutByPlacementId = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const pt of placedTools) {
+      const info = toolInfo.get(pt.tool_id)
+      const sp = info?.spacing ?? (config.tool_spacing ?? 0)
+      if (sp <= 0) continue
+      const clr = info?.clearance ?? config.cutout_clearance
+      m.set(pt.id, clr + sp)
+    }
+    return m
+  }, [placedTools, toolInfo, config.cutout_clearance, config.tool_spacing])
 
   function handleDownload() {
     window.open(getBinStlUrl(binId), '_blank')
@@ -445,6 +508,9 @@ export default function BinPage() {
           {warning && (
             <InfoBanner>{warning}</InfoBanner>
           )}
+          {layoutWarning && (
+            <InfoBanner>{layoutWarning}</InfoBanner>
+          )}
           {splitCount > 1 && (
             <InfoBanner>Split into {splitCount} pieces</InfoBanner>
           )}
@@ -514,6 +580,39 @@ export default function BinPage() {
             layout="horizontal"
             projectId={projectSource.projectId}
             currentToolIds={placedTools.map(tool => tool.tool_id)}
+            headerExtra={
+              <div className="flex items-center gap-1 ml-2">
+                <button
+                  onClick={() => handleAutoArrangeChange(!autoArrange)}
+                  className={`px-2 py-0.5 rounded-[7px] text-[10px] flex items-center gap-1 transition-colors cursor-pointer ${
+                    autoArrange ? 'bg-accent-muted text-accent' : 'hover:bg-border/50 text-text-muted'
+                  }`}
+                  title="Re-pack all tools into the smallest grid whenever one is added"
+                >
+                  <LayoutGrid className="w-3 h-3" />
+                  Auto-arrange
+                </button>
+                <button
+                  onClick={() => handleArrangeRotationChange(!arrangeRotation)}
+                  className={`px-2 py-0.5 rounded-[7px] text-[10px] flex items-center gap-1 transition-colors cursor-pointer ${
+                    arrangeRotation ? 'bg-accent-muted text-accent' : 'hover:bg-border/50 text-text-muted'
+                  }`}
+                  title="Allow 90-degree rotation when arranging"
+                >
+                  <RotateCw className="w-3 h-3" />
+                  Rotate
+                </button>
+                <button
+                  onClick={() => runArrange(placedTools)}
+                  disabled={placedTools.length === 0}
+                  className="px-2 py-0.5 rounded-[7px] text-[10px] flex items-center gap-1 transition-colors cursor-pointer hover:bg-border/50 text-text-muted disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="Pack the current tools into the smallest grid now"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  Arrange
+                </button>
+              </div>
+            }
           />
         </div>
 
@@ -541,6 +640,7 @@ export default function BinPage() {
                 smoothLevels={smoothLevels}
                 onSmoothLevelChange={handleSmoothLevelChange}
                 onDraggingChange={setIsDragging}
+                keepOutByPlacementId={keepOutByPlacementId}
               />
             </div>
 

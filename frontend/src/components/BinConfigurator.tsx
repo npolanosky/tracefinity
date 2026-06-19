@@ -308,6 +308,17 @@ export function BinConfigurator({ config, onChange, autoSize, onAutoSizeChange, 
       />
 
       <SliderRow
+        label="Tool Spacing"
+        help="Keep-out air gap beyond each cutout when auto-arranging, e.g. for parts that overhang their cutout. Does not change the pocket size."
+        value={config.tool_spacing ?? 0}
+        min={0}
+        max={10}
+        step={0.25}
+        unit="mm"
+        onChange={(v) => update({ tool_spacing: v })}
+      />
+
+      <SliderRow
         label="Cutout Chamfer"
         help="Bevel distance on the top edge of each tool pocket, in mm. 0 = sharp edge."
         value={config.cutout_chamfer}

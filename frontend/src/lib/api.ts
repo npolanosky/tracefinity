@@ -230,6 +230,15 @@ export async function getTool(toolId: string): Promise<Tool> {
   return fetchApi(`/api/tools/${toolId}`)
 }
 
+export async function createTool(
+  opts: { name?: string; shapes?: import('@/types').ToolShape[] } = {}
+): Promise<Tool> {
+  return fetchApi('/api/tools', {
+    method: 'POST',
+    body: JSON.stringify(opts),
+  })
+}
+
 export async function updateTool(
   toolId: string,
   updates: {
@@ -246,9 +255,12 @@ export async function updateTool(
     project_ids?: string[]
     review_status?: string | null
     needs_cleanup?: boolean
+    shapes?: import('@/types').ToolShape[] | null
+    clearance_override?: number | null
+    spacing_override?: number | null
   }
-): Promise<void> {
-  await fetchApi(`/api/tools/${toolId}`, {
+): Promise<Tool> {
+  return fetchApi(`/api/tools/${toolId}`, {
     method: 'PUT',
     body: JSON.stringify(updates),
   })

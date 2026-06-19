@@ -128,3 +128,52 @@ export function simplifyEpsilon(points: Point[], accuracy: number): number {
 export function snapToGrid(v: number, grid: number): number {
   return Math.round(v / grid) * grid
 }
+
+/** constrain a drag delta to its dominant cardinal axis (Shift-drag) */
+export function axisLock(dx: number, dy: number): { dx: number; dy: number } {
+  return Math.abs(dx) >= Math.abs(dy) ? { dx, dy: 0 } : { dx: 0, dy }
+}
+
+// --- measurement geometry ---
+
+export function signedArea(pts: Point[]): number {
+  let a = 0
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i]
+    const q = pts[(i + 1) % pts.length]
+    a += p.x * q.y - q.x * p.y
+  }
+  return a / 2
+}
+
+/** Midpoint of edge a->b and its unit normal pointing away from the polygon interior. */
+export function edgeMidpointNormal(a: Point, b: Point, ccw: boolean): { mid: Point; normal: Point } {
+  const dx = b.x - a.x
+  const dy = b.y - a.y
+  const len = Math.hypot(dx, dy) || 1
+  // for a positively-oriented ring the outward normal of edge (a->b) is (dy,-dx)
+  const sign = ccw ? 1 : -1
+  return {
+    mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+    normal: { x: (sign * dy) / len, y: (sign * -dx) / len },
+  }
+}
+
+/** Interior angle (degrees, 0-360, reflex-aware) at vertex v between neighbors prev and next. */
+export function interiorAngleDeg(prev: Point, v: Point, next: Point, ccw: boolean): number {
+  const au = Math.atan2(prev.y - v.y, prev.x - v.x)
+  const aw = Math.atan2(next.y - v.y, next.x - v.x)
+  let diff = ccw ? au - aw : aw - au
+  diff = ((diff % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)
+  return (diff * 180) / Math.PI
+}
+
+/** Unit vector from v into the polygon interior, bisecting the interior angle. */
+export function interiorBisector(prev: Point, v: Point, next: Point, ccw: boolean): Point {
+  const au = Math.atan2(prev.y - v.y, prev.x - v.x)
+  const aw = Math.atan2(next.y - v.y, next.x - v.x)
+  const interior = (interiorAngleDeg(prev, v, next, ccw) * Math.PI) / 180
+  const base = ccw ? aw : au
+  const angle = base + interior / 2
+  return { x: Math.cos(angle), y: Math.sin(angle) }
+}

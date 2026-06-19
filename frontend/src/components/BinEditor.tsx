@@ -2,7 +2,8 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 import type { PlacedTool, TextLabel } from '@/types'
-import { snapToGrid as snapToGridUtil } from '@/lib/svg'
+import { snapToGrid as snapToGridUtil, axisLock } from '@/lib/svg'
+import { toolBounds } from '@/lib/packing'
 import { DEFAULT_GRID_UNIT, DISPLAY_SCALE, SNAP_GRID, resolveSnap, type SnapMode } from '@/lib/constants'
 import { BinEditorToolbar } from '@/components/BinEditorToolbar'
 import { BinEditorCanvas } from '@/components/BinEditorCanvas'
@@ -26,18 +27,26 @@ interface Props {
   smoothLevels?: Map<string, number>
   onSmoothLevelChange?: (toolId: string, level: number) => void
   onDraggingChange?: (dragging: boolean) => void
+  keepOutByPlacementId?: Map<string, number>
 }
 
 type Tool = 'select' | 'text'
 
 type Selection =
-  | { type: 'tool'; toolId: string }
+  | { type: 'tool'; toolIds: string[] }
   | { type: 'hole'; toolId: string; holeId: string }
   | { type: 'label'; labelId: string }
   | null
 
+interface ToolDragOrig {
+  id: string
+  points: { x: number; y: number }[]
+  holes: { id: string; x: number; y: number }[]
+  rings: { x: number; y: number }[][]
+}
+
 type DragState =
-  | { type: 'tool'; toolId: string; startX: number; startY: number; origPoints: { x: number; y: number }[]; origHoles: { id: string; x: number; y: number }[]; origInteriorRings: { x: number; y: number }[][] }
+  | { type: 'tool'; anchorId: string; startX: number; startY: number; orig: ToolDragOrig[] }
   | { type: 'rotate'; toolId: string; centerX: number; centerY: number; startAngle: number; origRotation: number; origPoints: { x: number; y: number }[]; origHoles: { id: string; x: number; y: number }[]; origInteriorRings: { x: number; y: number }[][] }
   | { type: 'label'; labelId: string; startX: number; startY: number; origX: number; origY: number }
   | { type: 'rotate-label'; labelId: string; centerX: number; centerY: number; startAngle: number; origRotation: number }
@@ -62,11 +71,15 @@ export function BinEditor({
   smoothLevels,
   onSmoothLevelChange,
   onDraggingChange,
+  keepOutByPlacementId,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [selection, setSelection] = useState<Selection>(null)
   const [activeTool, setActiveTool] = useState<Tool>('select')
   const [dragging, setDragging] = useState<DragState>(null)
+  const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
+  const marqueeRef = useRef<{ x0: number; y0: number; additive: boolean; baseIds: string[] } | null>(null)
+  const suppressClickRef = useRef(false)
   const [snapEnabled, setSnapEnabled] = useState(true)
   const [snapGrid, setSnapGrid] = useState(SNAP_GRID)
   const [pendingLabel, setPendingLabel] = useState<{ x: number; y: number } | null>(null)
@@ -159,16 +172,33 @@ export function BinEditor({
     const tool = placedTools.find(t => t.id === toolId)
     if (!tool) return
 
-    setSelection({ type: 'tool', toolId })
+    const current = selection?.type === 'tool' ? selection.toolIds : []
+
+    // shift/ctrl-click toggles membership without starting a drag
+    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+      const ids = current.includes(toolId)
+        ? current.filter(id => id !== toolId)
+        : [...current, toolId]
+      setSelection(ids.length > 0 ? { type: 'tool', toolIds: ids } : null)
+      return
+    }
+
+    // dragging a member of a multi-selection moves the whole group;
+    // grabbing an unselected tool replaces the selection
+    const ids = current.includes(toolId) ? current : [toolId]
+    setSelection({ type: 'tool', toolIds: ids })
     const pos = screenToMm(e.clientX, e.clientY)
     setDragging({
       type: 'tool',
-      toolId,
+      anchorId: toolId,
       startX: pos.x,
       startY: pos.y,
-      origPoints: tool.points.map(p => ({ x: p.x, y: p.y })),
-      origHoles: tool.finger_holes.map(fh => ({ id: fh.id, x: fh.x, y: fh.y })),
-      origInteriorRings: (tool.interior_rings ?? []).map(ring => ring.map(p => ({ x: p.x, y: p.y }))),
+      orig: placedTools.filter(t => ids.includes(t.id)).map(t => ({
+        id: t.id,
+        points: t.points.map(p => ({ x: p.x, y: p.y })),
+        holes: t.finger_holes.map(fh => ({ id: fh.id, x: fh.x, y: fh.y })),
+        rings: (t.interior_rings ?? []).map(ring => ring.map(p => ({ x: p.x, y: p.y }))),
+      })),
     })
   }
 
@@ -282,6 +312,7 @@ export function BinEditor({
     if (!dragging) return
     const clientX = e.clientX
     const clientY = e.clientY
+    const shiftKey = e.shiftKey
 
     if (rafRef.current) cancelAnimationFrame(rafRef.current)
     rafRef.current = requestAnimationFrame(() => {
@@ -293,25 +324,32 @@ export function BinEditor({
       const onLabelsChange = onTextLabelsChangeRef.current
 
       if (dragging.type === 'tool') {
-        const origCenterX = dragging.origPoints.reduce((sum, p) => sum + p.x, 0) / dragging.origPoints.length
-        const origCenterY = dragging.origPoints.reduce((sum, p) => sum + p.y, 0) / dragging.origPoints.length
-        const rawDx = pos.x - dragging.startX
-        const rawDy = pos.y - dragging.startY
-        const newCenterX = snapToGrid(origCenterX + rawDx)
-        const newCenterY = snapToGrid(origCenterY + rawDy)
+        // snap the grabbed tool's centre; every selected tool follows by the
+        // same offset so the group's relative layout is preserved
+        const anchor = dragging.orig.find(o => o.id === dragging.anchorId) ?? dragging.orig[0]
+        const origCenterX = anchor.points.reduce((sum, p) => sum + p.x, 0) / anchor.points.length
+        const origCenterY = anchor.points.reduce((sum, p) => sum + p.y, 0) / anchor.points.length
+        let rawDx = pos.x - dragging.startX
+        let rawDy = pos.y - dragging.startY
+        if (shiftKey) ({ dx: rawDx, dy: rawDy } = axisLock(rawDx, rawDy))
+        // the shift-locked axis stays exactly put, even off-grid
+        const newCenterX = shiftKey && rawDx === 0 ? origCenterX : snapToGrid(origCenterX + rawDx)
+        const newCenterY = shiftKey && rawDy === 0 ? origCenterY : snapToGrid(origCenterY + rawDy)
         const dx = newCenterX - origCenterX
         const dy = newCenterY - origCenterY
+        const origById = new Map(dragging.orig.map(o => [o.id, o]))
         const updated = currentTools.map(tool => {
-          if (tool.id !== dragging.toolId) return tool
+          const orig = origById.get(tool.id)
+          if (!orig) return tool
           return {
             ...tool,
-            points: dragging.origPoints.map(p => ({ x: p.x + dx, y: p.y + dy })),
+            points: orig.points.map(p => ({ x: p.x + dx, y: p.y + dy })),
             finger_holes: tool.finger_holes.map(fh => {
-              const orig = dragging.origHoles.find(h => h.id === fh.id)
-              if (!orig) return fh
-              return { ...fh, x: orig.x + dx, y: orig.y + dy }
+              const oh = orig.holes.find(h => h.id === fh.id)
+              if (!oh) return fh
+              return { ...fh, x: oh.x + dx, y: oh.y + dy }
             }),
-            interior_rings: dragging.origInteriorRings.map(ring =>
+            interior_rings: orig.rings.map(ring =>
               ring.map(p => ({ x: p.x + dx, y: p.y + dy }))
             ),
           }
@@ -398,9 +436,66 @@ export function BinEditor({
     }
   }, [dragging, handleMouseMove, handleMouseUp])
 
+  // rubber-band selection: drag on empty canvas to select every tool whose
+  // bounds intersect the marquee. shift/ctrl adds to the current selection.
+  const handleCanvasMouseDown = (e: React.MouseEvent) => {
+    if (activeTool !== 'select' || e.button !== 0) return
+    if (editingLabelId || pendingLabel) return
+    suppressClickRef.current = false
+    const pos = screenToMm(e.clientX, e.clientY)
+    marqueeRef.current = {
+      x0: pos.x,
+      y0: pos.y,
+      additive: e.shiftKey || e.ctrlKey || e.metaKey,
+      baseIds: selection?.type === 'tool' ? selection.toolIds : [],
+    }
+    setMarquee({ x0: pos.x, y0: pos.y, x1: pos.x, y1: pos.y })
+  }
+
+  const handleMarqueeMove = useCallback((e: MouseEvent) => {
+    const start = marqueeRef.current
+    if (!start) return
+    const pos = screenToMm(e.clientX, e.clientY)
+    setMarquee({ x0: start.x0, y0: start.y0, x1: pos.x, y1: pos.y })
+  }, [screenToMm])
+
+  const handleMarqueeUp = useCallback((e: MouseEvent) => {
+    const start = marqueeRef.current
+    if (!start) return
+    marqueeRef.current = null
+    setMarquee(null)
+    const pos = screenToMm(e.clientX, e.clientY)
+    const minX = Math.min(start.x0, pos.x)
+    const maxX = Math.max(start.x0, pos.x)
+    const minY = Math.min(start.y0, pos.y)
+    const maxY = Math.max(start.y0, pos.y)
+    // a near-zero marquee is a plain click -- let the click handler clear
+    if (maxX - minX < 0.5 && maxY - minY < 0.5) return
+    suppressClickRef.current = true
+    const ids = toolsRef.current
+      .filter(t => {
+        const b = toolBounds(t)
+        return b.minX <= maxX && b.maxX >= minX && b.minY <= maxY && b.maxY >= minY
+      })
+      .map(t => t.id)
+    const merged = start.additive ? [...new Set([...start.baseIds, ...ids])] : ids
+    setSelection(merged.length > 0 ? { type: 'tool', toolIds: merged } : null)
+  }, [screenToMm])
+
+  const marqueeActive = marquee !== null
+  useEffect(() => {
+    if (!marqueeActive) return
+    window.addEventListener('mousemove', handleMarqueeMove)
+    window.addEventListener('mouseup', handleMarqueeUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMarqueeMove)
+      window.removeEventListener('mouseup', handleMarqueeUp)
+    }
+  }, [marqueeActive, handleMarqueeMove, handleMarqueeUp])
+
   const handleDeleteTool = () => {
     if (selection?.type !== 'tool') return
-    onPlacedToolsChange(placedTools.filter(t => t.id !== selection.toolId))
+    onPlacedToolsChange(placedTools.filter(t => !selection.toolIds.includes(t.id)))
     setSelection(null)
   }
 
@@ -433,6 +528,12 @@ export function BinEditor({
   }, [pendingLabel, pendingText, textLabels, onTextLabelsChange])
 
   const handleBackgroundClick = (e: React.MouseEvent) => {
+    // a finished marquee fires a click on the svg -- don't clear the
+    // selection it just made
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false
+      return
+    }
     if (activeTool === 'text') {
       if (pendingLabel) {
         commitPendingLabel()
@@ -459,8 +560,10 @@ export function BinEditor({
     ? textLabels.find(l => l.id === selection.labelId)
     : null
 
-  const selectedTool = selection?.type === 'tool'
-    ? placedTools.find(t => t.id === selection.toolId)
+  const selectedToolCount = selection?.type === 'tool' ? selection.toolIds.length : 0
+
+  const selectedTool = selection?.type === 'tool' && selection.toolIds.length === 1
+    ? placedTools.find(t => t.id === selection.toolIds[0])
     : null
 
   const selectedHole = selection?.type === 'hole'
@@ -523,6 +626,7 @@ export function BinEditor({
           setSnapGrid={setSnapGrid}
           handleRecenter={handleRecenter}
           selectedTool={selectedTool ?? null}
+          selectedToolCount={selectedToolCount}
           selectedLabel={selectedLabel ?? null}
           selectedHole={selectedHole ?? null}
           selectedHoleToolId={selection?.type === 'hole' ? selection.toolId : null}
@@ -559,6 +663,7 @@ export function BinEditor({
         pendingLabelText={pendingText}
         smoothedToolIds={smoothedToolIds}
         smoothLevels={smoothLevels}
+        keepOutByPlacementId={keepOutByPlacementId}
         activeTool={activeTool}
         binWidthMm={binWidthMm}
         binHeightMm={binHeightMm}
@@ -568,6 +673,8 @@ export function BinEditor({
         handleOffset={handleOffset}
         pendingInputRef={pendingInputRef}
         editInputRef={editInputRef}
+        marquee={marquee}
+        handleCanvasMouseDown={handleCanvasMouseDown}
         handleToolMouseDown={handleToolMouseDown}
         handleRotateMouseDown={handleRotateMouseDown}
         handleLabelMouseDown={handleLabelMouseDown}

@@ -56,14 +56,30 @@ class ScaledFingerHole:
         self.depth_override = depth_override
 
 
+class ScaledLevelPart:
+    """one connected component of a multi-level pocket cross-section, mm.
+    depth=None means the default-depth group (placement/bin depth applies)."""
+    def __init__(
+        self,
+        depth: float | None,
+        points_mm: list[tuple[float, float]],
+        interior_rings_mm: list[list[tuple[float, float]]] = None,
+    ):
+        self.depth = depth
+        self.points_mm = points_mm
+        self.interior_rings_mm = interior_rings_mm or []
+
+
 class ScaledPolygon:
-    def __init__(self, id: str, points_mm: list[tuple[float, float]], label: str, finger_holes: list[ScaledFingerHole] = None, interior_rings_mm: list[list[tuple[float, float]]] = None, depth_override: float | None = None):
+    def __init__(self, id: str, points_mm: list[tuple[float, float]], label: str, finger_holes: list[ScaledFingerHole] = None, interior_rings_mm: list[list[tuple[float, float]]] = None, depth_override: float | None = None, levels: list[ScaledLevelPart] | None = None):
         self.id = id
         self.points_mm = points_mm
         self.label = label
         self.finger_holes = finger_holes or []
         self.interior_rings_mm = interior_rings_mm or []
         self.depth_override = depth_override
+        # when set, the pocket is cut per level part instead of the footprint
+        self.levels = levels
 
 
 class PolygonScaler:
@@ -145,48 +161,85 @@ class PolygonScaler:
         ]
         return max(pieces, key=lambda g: g.area) if pieces else None
 
+    def _buffer_rings(
+        self,
+        points_mm: list[tuple[float, float]],
+        interior_rings_mm: list[list[tuple[float, float]]],
+        clearance_mm: float,
+    ) -> tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]:
+        """buffer one exterior+holes ring set outward; falls back to the input.
+        if buffering splits the outline, keep the largest piece."""
+        shape = ShapelyPolygon(points_mm, holes=interior_rings_mm or [])
+        if not shape.is_valid:
+            shape = make_valid(shape)
+
+        buffered = shape.buffer(clearance_mm, join_style=2)
+        result = self._largest_polygon(buffered)
+        if result is None:
+            return points_mm, interior_rings_mm
+
+        coords = list(result.exterior.coords)[:-1]
+        holes = [list(interior.coords)[:-1] for interior in result.interiors]
+        return coords, holes
+
     def add_clearance(self, polygon: ScaledPolygon, clearance_mm: float) -> ScaledPolygon:
-        """expand polygon outward by clearance amount"""
+        """expand polygon outward by clearance amount. level parts get the
+        same clearance per side; buffered adjacent levels overlapping slightly
+        is harmless -- the deeper prism wins in the union of cutters."""
         if clearance_mm <= 0:
             return polygon
 
         try:
-            shape = ShapelyPolygon(polygon.points_mm, holes=polygon.interior_rings_mm or [])
-            if not shape.is_valid:
-                shape = make_valid(shape)
+            coords, holes = self._buffer_rings(polygon.points_mm, polygon.interior_rings_mm, clearance_mm)
 
-            buffered = shape.buffer(clearance_mm, join_style=2)
-            result = self._largest_polygon(buffered)
-            if result is None:
-                logger.warning("clearance produced no usable outline for %s; keeping original", polygon.id)
-                return polygon
-            if buffered.geom_type != "Polygon":
-                logger.warning("outline %s split during clearance repair; keeping largest piece", polygon.id)
+            levels = None
+            if polygon.levels:
+                levels = []
+                for part in polygon.levels:
+                    p_coords, p_holes = self._buffer_rings(part.points_mm, part.interior_rings_mm, clearance_mm)
+                    levels.append(ScaledLevelPart(part.depth, p_coords, p_holes))
 
-            coords = list(result.exterior.coords)[:-1]
-            holes = [list(interior.coords)[:-1] for interior in result.interiors]
-            return ScaledPolygon(polygon.id, coords, polygon.label, polygon.finger_holes, holes, depth_override=polygon.depth_override)
+            return ScaledPolygon(polygon.id, coords, polygon.label, polygon.finger_holes, holes, depth_override=polygon.depth_override, levels=levels)
 
         except Exception:
             logger.exception("clearance failed for %s; keeping original outline", polygon.id)
             return polygon
 
+    def _simplify_rings(
+        self,
+        points_mm: list[tuple[float, float]],
+        interior_rings_mm: list[list[tuple[float, float]]],
+        tolerance_mm: float,
+    ) -> tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]:
+        """Douglas-Peucker one exterior+holes ring set; falls back to the input"""
+        shape = ShapelyPolygon(points_mm, holes=interior_rings_mm or [])
+        if not shape.is_valid:
+            shape = make_valid(shape)
+
+        simplified = shape.simplify(tolerance_mm, preserve_topology=True)
+
+        if simplified.geom_type == "Polygon" and len(simplified.exterior.coords) >= 4:
+            coords = list(simplified.exterior.coords)[:-1]
+            holes = [list(interior.coords)[:-1] for interior in simplified.interiors]
+            return coords, holes
+        return points_mm, interior_rings_mm
+
     def simplify(self, polygon: ScaledPolygon, tolerance_mm: float = 0.3) -> ScaledPolygon:
         """reduce vertex count via Douglas-Peucker. big speedup for CSG."""
-        if len(polygon.points_mm) <= 8 and not polygon.interior_rings_mm:
+        if len(polygon.points_mm) <= 8 and not polygon.interior_rings_mm and not polygon.levels:
             return polygon
 
         try:
-            shape = ShapelyPolygon(polygon.points_mm, holes=polygon.interior_rings_mm or [])
-            if not shape.is_valid:
-                shape = make_valid(shape)
+            coords, holes = self._simplify_rings(polygon.points_mm, polygon.interior_rings_mm, tolerance_mm)
 
-            simplified = shape.simplify(tolerance_mm, preserve_topology=True)
+            levels = None
+            if polygon.levels:
+                levels = []
+                for part in polygon.levels:
+                    p_coords, p_holes = self._simplify_rings(part.points_mm, part.interior_rings_mm, tolerance_mm)
+                    levels.append(ScaledLevelPart(part.depth, p_coords, p_holes))
 
-            if simplified.geom_type == "Polygon" and len(simplified.exterior.coords) >= 4:
-                coords = list(simplified.exterior.coords)[:-1]
-                holes = [list(interior.coords)[:-1] for interior in simplified.interiors]
-                return ScaledPolygon(polygon.id, coords, polygon.label, polygon.finger_holes, holes, depth_override=polygon.depth_override)
+            return ScaledPolygon(polygon.id, coords, polygon.label, polygon.finger_holes, holes, depth_override=polygon.depth_override, levels=levels)
         except Exception:
             pass
 
@@ -212,12 +265,21 @@ class PolygonScaler:
         clearance_mm: float,
         smoothed: bool,
         smooth_level: float = 0.5,
+        parametric: bool = False,
     ) -> ScaledPolygon:
         """cutout pipeline: smooth or simplify first, clearance last.
         vertex reduction erodes the outline by up to its tolerance; applied
         before buffering that erosion can never eat into the clearance, and
-        the printed pocket is exactly the previewed shape grown by clearance."""
-        shape = self.smooth(polygon, level=smooth_level) if smoothed else self.simplify(polygon)
+        the printed pocket is exactly the previewed shape grown by clearance.
+
+        parametric outlines are exact, so they only get a light collinear-point
+        strip (0.05mm) instead of smoothing or the default simplify."""
+        if parametric:
+            shape = self.simplify(polygon, tolerance_mm=0.05)
+        elif smoothed:
+            shape = self.smooth(polygon, level=smooth_level)
+        else:
+            shape = self.simplify(polygon)
         return self.add_clearance(shape, clearance_mm)
 
     def compute_bounding_box(
