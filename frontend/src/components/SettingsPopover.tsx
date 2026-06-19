@@ -6,7 +6,7 @@ import { getSettings, saveSettings } from '@/lib/settings'
 import { PAPER_SIZE_OPTIONS, DEFAULT_PAPER_SIZE } from '@/lib/paper'
 import type { PaperSize } from '@/types'
 import { IconButton } from '@/components/IconButton'
-import { NumericInput } from '@/components/NumericInput'
+import { NumberField } from '@/components/NumberField'
 
 export function SettingsPopover() {
   const [open, setOpen] = useState(false)
@@ -69,12 +69,12 @@ export function SettingsPopover() {
                 style={{ '--slider-pct': `${pct}%` } as React.CSSProperties}
               />
               <div className="flex items-center gap-1">
-                <NumericInput
+                <NumberField
                   min={150}
                   max={400}
                   step={1}
                   value={bedSize}
-                  onChange={handleBedSizeChange}
+                  onCommit={handleBedSizeChange}
                   className="w-14 h-7 bg-elevated text-right text-xs font-semibold text-text-primary rounded pr-2 focus:outline-none"
                 />
                 <span className="text-[10px] text-text-muted w-5">mm</span>
