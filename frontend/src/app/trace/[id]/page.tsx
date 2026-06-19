@@ -49,6 +49,7 @@ export default function TracePage() {
   const [error, setError] = useState<string | null>(null)
 
   const [corners, setLocalCorners] = useState<Point[]>([])
+  const [cornersAutoDetected, setCornersAutoDetected] = useState(false)
   const [paperSize, setPaperSize] = useState<PaperSize>('a4')
   const [imageUrl, setImageUrl] = useState<string>('')
   const [correctedImageUrl, setCorrectedImageUrl] = useState<string>('')
@@ -102,8 +103,9 @@ export default function TracePage() {
           setProvider('manual')
         }
 
-        if (s.corners) {
+        if (s.corners && s.corners.length === 4) {
           setLocalCorners(s.corners)
+          setCornersAutoDetected(true)
         }
         if (s.paper_size) {
           setPaperSize(s.paper_size)
@@ -358,9 +360,19 @@ export default function TracePage() {
           {step === 'corners' && (
             <div className="space-y-3">
               <CornersHint />
-              <p className="text-xs text-text-muted">
-                Drag the corner handles to match the paper edges.
-              </p>
+              {cornersAutoDetected ? (
+                <div className="flex items-start gap-1.5 text-xs text-green-400">
+                  <Check className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                  <p>
+                    Paper edges detected automatically.{' '}
+                    <span className="text-text-muted">Drag a handle only if a corner is off.</span>
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-text-muted">
+                  Drag the corner handles to match the paper edges.
+                </p>
+              )}
 
               <div>
                 <span className="text-xs text-text-primary tracking-[0.3px]">Paper Size</span>
