@@ -505,8 +505,8 @@ export function BinEditor({
 
   return (
     <div className="h-full w-full relative">
-      {/* floating toolbar */}
-      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 glass-toolbar px-1.5 py-1 flex items-center gap-0.5">
+      {/* floating toolbar - constrained to the panel and wraps on narrow widths */}
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 max-w-[calc(100%-1.5rem)] glass-toolbar px-1.5 py-1 flex flex-wrap items-center justify-center gap-0.5">
         <BinEditorToolbar
           activeTool={activeTool}
           setActiveTool={setActiveTool}
