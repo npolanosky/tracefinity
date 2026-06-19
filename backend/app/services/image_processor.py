@@ -125,10 +125,14 @@ class ImageProcessor:
 
     # Strategy ladder for paper detection. Each rung is a parameter set tried in
     # order (cascading on failure); the "re-detect" button advances to the next
-    # rung. close fills tool/shadow holes in the bright paper; OPEN snaps the
-    # thin bridges to background specks that otherwise balloon the region out to
-    # the frame edge; then a 4-point quad is fit to the cleaned contour.
+    # rung. The "saliency" rung uses the U2-Net mask directly: when the salient
+    # object IS the bright sheet (tool-on-paper photos, where the paper is the
+    # dominant object), its filled outline is the cleanest paper boundary. The
+    # bright/* rungs threshold the image; close fills tool/shadow holes, OPEN
+    # snaps thin bridges to background specks that otherwise balloon the region
+    # to the frame edge; then a 4-point quad is fit to the cleaned contour.
     PAPER_STRATEGIES = [
+        {"label": "saliency", "thresh": (), "close": 0, "open": 0, "amin": 0.10, "amax": 0.97, "tol": 0.18},
         {"label": "bright/standard", "thresh": (215, 200, 190, 180), "close": 5, "open": 9, "amin": 0.08, "amax": 0.93, "tol": 0.12},
         {"label": "bright/dim", "thresh": (175, 160, 145, 130), "close": 7, "open": 13, "amin": 0.06, "amax": 0.96, "tol": 0.18},
         {"label": "bright/loose", "thresh": (205, 185, 165, 150), "close": 11, "open": 5, "amin": 0.05, "amax": 0.97, "tol": 0.30},
@@ -148,15 +152,34 @@ class ImageProcessor:
             logger.warning("paper detection: could not read %s", image_path)
             return None, None
 
-        tool_mask = self._get_tool_mask(image_path)
-        img[tool_mask > 0] = [0, 0, 0]
         h, w = img.shape[:2]
+        tool_mask = self._get_tool_mask(image_path)
+        gray_full = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+        # U2-Net saliency can lock onto EITHER the dark tool or the bright sheet
+        # (on tool-on-paper photos the paper is the dominant object, so the mask
+        # becomes a paper silhouette with the tool punched out as a hole).
+        # Compare brightness inside/outside the mask: if the salient region is
+        # brighter, it's the paper -- keep it (blacking it out would destroy the
+        # very thing we detect) and let the "saliency" rung fit its outline.
+        # Otherwise it's a dark tool: black it out so it can't fragment the paper.
+        sal = tool_mask > 0
+        salient_is_paper = bool(
+            sal.any() and (~sal).any()
+            and gray_full[sal].mean() - gray_full[~sal].mean() > 15
+        )
+        if not salient_is_paper:
+            img[sal] = [0, 0, 0]
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         target = self._target_aspect(paper_size)
         n = len(self.PAPER_STRATEGIES)
 
         def run(idx: int, asp: float | None) -> list[tuple[float, float]] | None:
             p = self.PAPER_STRATEGIES[idx]
+            if p["label"] == "saliency":
+                if not salient_is_paper:
+                    return None
+                return self._paper_from_saliency(tool_mask, h, w, asp, p)
             if p["label"] == "edges":
                 return self._detect_paper_edges(gray, img, h, w, asp)
             return self._bright_quad_strategy(gray, h, w, asp, p)
@@ -188,6 +211,44 @@ class ImageProcessor:
             return None
         a, b = PAPER_SIZES[paper_size]
         return min(a, b) / max(a, b)
+
+    def _paper_from_saliency(
+        self, mask: np.ndarray, h: int, w: int, target_aspect: float | None, p: dict
+    ) -> list[tuple[float, float]] | None:
+        """fit the paper quad to the U2-Net saliency mask outline.
+
+        Used only when the salient region is the bright sheet itself. Smooths
+        the (ragged, tool-holed) silhouette with a close, takes its external
+        contour -- holes from the tool are ignored by RETR_EXTERNAL -- and fits
+        a 4-point quad. Aspect/area gates keep it from accepting a non-sheet
+        blob."""
+        k = max(5, int(min(h, w) * 0.01) | 1)
+        m = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((k, k), np.uint8), iterations=2)
+        contours, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        best = None
+        for c in sorted(contours, key=cv2.contourArea, reverse=True)[:3]:
+            area = cv2.contourArea(c)
+            if area < h * w * p["amin"] or area > h * w * p["amax"]:
+                continue
+            rect = cv2.minAreaRect(c)
+            rw, rh = rect[1]
+            if rw == 0 or rh == 0:
+                continue
+            aspect = min(rw, rh) / max(rw, rh)
+            if target_aspect is not None:
+                if abs(aspect - target_aspect) > p["tol"]:
+                    continue
+            elif aspect < 0.5 or aspect > 0.95:
+                continue
+            quad = self._quad_from_contour(c)
+            corners_src = quad if quad is not None else cv2.boxPoints(rect).astype(float)
+            score = abs(aspect - target_aspect) if target_aspect is not None else -area
+            if best is None or score < best[0]:
+                best = (score, corners_src)
+        if best is None:
+            return None
+        corners = self._order_corners(np.asarray(best[1], dtype=float))
+        return [(float(x), float(y)) for x, y in corners]
 
     def _bright_quad_strategy(
         self, gray: np.ndarray, h: int, w: int, target_aspect: float | None, p: dict

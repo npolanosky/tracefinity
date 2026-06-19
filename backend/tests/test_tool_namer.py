@@ -105,3 +105,51 @@ class TestGeminiToolNamerErrors:
         monkeypatch.setattr(namer, "_via_google", boom)
         result = asyncio.run(namer.name(b"img"))
         assert result is None
+
+
+def _ollama_mock_client(monkeypatch, handler):
+    """patch httpx.AsyncClient so OllamaToolNamer talks to a MockTransport."""
+    import functools
+    import httpx
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(
+        httpx, "AsyncClient", functools.partial(httpx.AsyncClient, transport=transport)
+    )
+
+
+class TestOllamaToolNamer:
+    def test_chat_success(self, monkeypatch):
+        import httpx
+
+        def handler(request):
+            assert request.url.path == "/api/chat"
+            return httpx.Response(200, json={"message": {"content": "wrench"}})
+
+        _ollama_mock_client(monkeypatch, handler)
+        namer = OllamaToolNamer("http://x:11434", "llava")
+        assert asyncio.run(namer.name(b"img")) == "wrench"
+
+    def test_falls_back_to_generate_on_error(self, monkeypatch):
+        # /api/chat 500 (the llava-on-some-Ollama failure) must retry /api/generate
+        import httpx
+
+        def handler(request):
+            if request.url.path == "/api/chat":
+                return httpx.Response(500, text="llava runner crashed")
+            assert request.url.path == "/api/generate"
+            return httpx.Response(200, json={"response": "phillips screwdriver"})
+
+        _ollama_mock_client(monkeypatch, handler)
+        namer = OllamaToolNamer("http://x:11434", "llava")
+        assert asyncio.run(namer.name(b"img")) == "phillips screwdriver"
+
+    def test_returns_none_when_both_fail(self, monkeypatch):
+        import httpx
+
+        def handler(request):
+            return httpx.Response(404, text="model not found")
+
+        _ollama_mock_client(monkeypatch, handler)
+        namer = OllamaToolNamer("http://x:11434", "llava")
+        assert asyncio.run(namer.name(b"img")) is None

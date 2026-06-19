@@ -133,20 +133,47 @@ class OllamaToolNamer:
         self.model = model
 
     async def name(self, image_png: bytes) -> Optional[str]:
-        try:
-            import base64
-            import httpx
+        import base64
+        import httpx
 
-            b64 = base64.b64encode(image_png).decode()
-            payload = {
-                "model": self.model,
-                "messages": [{"role": "user", "content": NAME_PROMPT, "images": [b64]}],
-                "stream": False,
-            }
+        b64 = base64.b64encode(image_png).decode()
+
+        async def post(client, path, payload):
+            return await client.post(f"{self.base_url}{path}", json=payload)
+
+        try:
             async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
-                resp = await client.post(f"{self.base_url}/api/chat", json=payload)
-                resp.raise_for_status()
-                return clean_name(resp.json().get("message", {}).get("content", ""))
+                # modern Ollama (>=0.1.14): /api/chat. Some Ollama/model combos
+                # (older builds, certain llava packagings) 404 when the model
+                # isn't pulled or 500 on a chat request with images, yet serve
+                # the same request fine via the legacy /api/generate endpoint --
+                # so fall back to it on ANY error and surface the body either way.
+                resp = await post(client, "/api/chat", {
+                    "model": self.model,
+                    "messages": [{"role": "user", "content": NAME_PROMPT, "images": [b64]}],
+                    "stream": False,
+                })
+                if resp.status_code >= 400:
+                    logger.warning(
+                        "ollama /api/chat HTTP %s (%s); retrying /api/generate (model=%r)",
+                        resp.status_code, resp.text[:200], self.model,
+                    )
+                    resp = await post(client, "/api/generate", {
+                        "model": self.model,
+                        "prompt": NAME_PROMPT,
+                        "images": [b64],
+                        "stream": False,
+                    })
+                if resp.status_code >= 400:
+                    logger.warning(
+                        "ollama tool naming failed: HTTP %s from %s (model=%r): %s",
+                        resp.status_code, self.base_url, self.model, resp.text[:300],
+                    )
+                    return None
+                data = resp.json()
+                # /api/chat -> message.content ; /api/generate -> response
+                text = (data.get("message") or {}).get("content") or data.get("response", "")
+                return clean_name(text)
         except Exception as e:  # best-effort; never break the caller
             logger.warning("ollama tool naming failed: %s", e)
             return None
