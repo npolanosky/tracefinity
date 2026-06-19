@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 import logging
@@ -42,6 +43,8 @@ from app.models.schemas import (
     ToolUpdateRequest,
     SaveToolsRequest,
     SaveToolsResponse,
+    NameToolsRequest,
+    NameToolsResponse,
     BinProject,
     BinProjectDetail,
     BinProjectListResponse,
@@ -72,7 +75,8 @@ from app.services.tool_store import ToolStore
 from app.services.bin_store import BinStore
 from app.services.project_store import ProjectStore
 from app.services.bin_service import sync_placed_tools
-from app.services.image_service import generate_tool_thumbnail
+from app.services.image_service import generate_tool_thumbnail, crop_polygon_png
+from app.services.tool_namer import get_tool_namer, tool_naming_available
 from app.services.tracer_registry import TRACER_LABELS, tracer_kind, validate_tracer_ids
 from app.services.geometry import optimal_rotation_angle as _optimal_rotation_angle
 from app.services.project_service import (
@@ -574,6 +578,8 @@ async def get_available_keys(request: Request):
     return {
         # google: server can trace without a user-supplied key (cloud env key, local, or remote)
         "google": has_cloud or has_saliency,
+        # whether the server can auto-name tools without a user-supplied key
+        "tool_naming": tool_naming_available(),
         "provider": tracer_kind(primary) if primary else None,
         "provider_label": TRACER_LABELS.get(primary, primary) if primary else None,
         "tracers": [
@@ -1104,6 +1110,50 @@ async def save_tools_from_session(request: Request, session_id: str, body: SaveT
         tool_ids.append(tool_id)
 
     return SaveToolsResponse(tool_ids=tool_ids)
+
+
+@router.post("/sessions/{session_id}/name-tools", response_model=NameToolsResponse)
+async def name_tools(request: Request, session_id: str, body: NameToolsRequest = NameToolsRequest(), user_id: str = Depends(get_user_id)):
+    """Auto-name traced polygons from their cropped images (on demand).
+
+    Optional and best-effort: returns only the polygons that could be named
+    and persists the new labels on the session. Runs synchronously — no
+    background task or polling."""
+    user_sessions, _, _ = get_stores(user_id)
+    session = user_sessions.get(session_id)
+    if not session or not session.corrected_image_path or not session.polygons:
+        raise HTTPException(status_code=400, detail="session has no traced polygons")
+
+    namer = get_tool_namer(body.api_key)
+    if namer is None:
+        raise HTTPException(status_code=400, detail="no tool-naming backend is configured")
+
+    polys = session.polygons
+    if body.polygon_ids is not None:
+        id_set = set(body.polygon_ids)
+        polys = [p for p in polys if p.id in id_set]
+
+    try:
+        src_img = Image.open(_abs(session.corrected_image_path))
+    except Exception:
+        raise HTTPException(status_code=400, detail="corrected image unavailable")
+
+    async def _name(poly):
+        crop = crop_polygon_png(src_img, poly.points)
+        if crop is None:
+            return poly.id, None
+        return poly.id, await namer.name(crop)
+
+    results = await asyncio.gather(*[_name(p) for p in polys])
+
+    labels = {pid: name for pid, name in results if name}
+    if labels:
+        by_id = {p.id: p for p in session.polygons}
+        for pid, name in labels.items():
+            by_id[pid].label = name
+        user_sessions.set(session_id, session)
+
+    return NameToolsResponse(labels=labels)
 
 
 # --- bin projects ---
