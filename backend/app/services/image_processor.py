@@ -139,7 +139,15 @@ class ImageProcessor:
         tool_mask = self._get_tool_mask(image_path)
         img[tool_mask > 0] = [0, 0, 0]
 
-        return self._detect_paper(img, self._target_aspect(paper_size))
+        target = self._target_aspect(paper_size)
+        result = self._detect_paper(img, target)
+        if result is None and target is not None:
+            # the aspect-constrained pass found nothing (e.g. a perspective-skewed
+            # sheet drifted past the tolerance). Fall back to an unconstrained
+            # detection so the user still gets a rough, editable quad rather than
+            # the corners silently not changing when they pick a paper size.
+            result = self._detect_paper(img, None)
+        return result
 
     @staticmethod
     def _target_aspect(paper_size: PaperSize | None) -> float | None:
@@ -260,11 +268,30 @@ class ImageProcessor:
                 continue
             aspect = min(rect_w, rect_h) / max(rect_w, rect_h)
             if target_aspect is not None:
-                # known sheet: demand the measured ratio match it (perspective tol)
-                if abs(aspect - target_aspect) > 0.06:
+                # known sheet: the measured ratio should be near it, but allow a
+                # wide band so perspective skew doesn't reject a valid sheet
+                if abs(aspect - target_aspect) > 0.15:
                     continue
             elif aspect < 0.55 or aspect > 0.85:
                 continue
+
+            # bright-background guard: paper should be brighter than what
+            # surrounds it. If the ring just outside the box is nearly as bright
+            # as the inside, the candidate bled into a bright table/background
+            # (the classic paper-on-white-table failure) -> reject.
+            ksize = box_margin * 2 + 1
+            ring = cv2.subtract(
+                cv2.dilate(rect_mask, np.ones((ksize, ksize), np.uint8)), rect_mask
+            )
+            if cv2.countNonZero(ring) > 0:
+                inside_mean = cv2.mean(gray, mask=rect_mask)[0]
+                ring_mean = cv2.mean(gray, mask=ring)[0]
+                if inside_mean - ring_mean < 15:
+                    logger.debug(
+                        "paper candidate rejected: not brighter than surroundings "
+                        "(in=%.0f out=%.0f)", inside_mean, ring_mean
+                    )
+                    continue
 
             # refine to the contour's true 4 corners; fall back to the box
             quad = self._quad_from_contour(contour)
@@ -322,7 +349,7 @@ class ImageProcessor:
                     if rect_w == 0 or rect_h == 0:
                         continue
                     aspect = min(rect_w, rect_h) / max(rect_w, rect_h)
-                    if abs(aspect - target_aspect) > 0.06:
+                    if abs(aspect - target_aspect) > 0.15:
                         continue
                 corners = self._order_corners(approx.reshape(4, 2))
                 return [(float(c[0]), float(c[1])) for c in corners]
