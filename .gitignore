@@ -53,3 +53,6 @@ htmlcov/
 
 # playwright
 .playwright-mcp
+
+# local test photos (not committed)
+sample_photos/

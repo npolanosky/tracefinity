@@ -61,3 +61,28 @@ class TestQuadFromContour:
     def test_triangle_is_not_a_quad(self):
         # approxPolyDP keeps a triangle at 3 points -> not a quad
         assert quad([[0, 0], [100, 0], [50, 90]]) is None
+
+
+class TestBrightQuadStrategy:
+    def _synthetic_paper(self):
+        # black background, a white Letter-ratio sheet inset from the edges
+        import cv2
+        img = np.zeros((1000, 800, 3), dtype=np.uint8)
+        cv2.rectangle(img, (120, 100), (680, 820), (255, 255, 255), -1)  # ~0.78 ratio
+        return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    def test_detects_a_clean_sheet(self):
+        ip = ImageProcessor.__new__(ImageProcessor)  # skip __init__ (no model load)
+        gray = self._synthetic_paper()
+        corners = ip._bright_quad_strategy(gray, 1000, 800, 0.773, ImageProcessor.PAPER_STRATEGIES[0])
+        assert corners is not None and len(corners) == 4
+        xs = [c[0] for c in corners]
+        ys = [c[1] for c in corners]
+        # corners land near the drawn rectangle (120,100)-(680,820)
+        assert min(xs) < 160 and max(xs) > 640
+        assert min(ys) < 140 and max(ys) > 780
+
+    def test_strategy_ladder_present(self):
+        labels = [s["label"] for s in ImageProcessor.PAPER_STRATEGIES]
+        assert "edges" in labels
+        assert len(ImageProcessor.PAPER_STRATEGIES) >= 3

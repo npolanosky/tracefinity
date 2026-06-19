@@ -107,13 +107,13 @@ export async function setCorners(
 
 export async function detectCorners(
   sessionId: string,
-  paperSize: PaperSize
-): Promise<Point[] | null> {
-  const res = await fetchApi<{ corners: Point[] | null }>(`/api/sessions/${sessionId}/detect-corners`, {
+  paperSize: PaperSize,
+  attempt?: number,
+): Promise<{ corners: Point[] | null; attempt: number | null }> {
+  return fetchApi(`/api/sessions/${sessionId}/detect-corners`, {
     method: 'POST',
-    body: JSON.stringify({ paper_size: paperSize }),
+    body: JSON.stringify({ paper_size: paperSize, attempt: attempt ?? null }),
   })
-  return res.corners
 }
 
 export interface TracerInfo {

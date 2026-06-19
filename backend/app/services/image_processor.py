@@ -123,31 +123,63 @@ class ImageProcessor:
         _, mask = cv2.threshold(alpha, 127, 255, cv2.THRESH_BINARY)
         return mask
 
-    def detect_paper_corners(
-        self, image_path: str, paper_size: PaperSize | None = None
-    ) -> list[tuple[float, float]] | None:
-        """detect paper corners by masking out tools first.
+    # Strategy ladder for paper detection. Each rung is a parameter set tried in
+    # order (cascading on failure); the "re-detect" button advances to the next
+    # rung. close fills tool/shadow holes in the bright paper; OPEN snaps the
+    # thin bridges to background specks that otherwise balloon the region out to
+    # the frame edge; then a 4-point quad is fit to the cleaned contour.
+    PAPER_STRATEGIES = [
+        {"label": "bright/standard", "thresh": (215, 200, 190, 180), "close": 5, "open": 9, "amin": 0.08, "amax": 0.93, "tol": 0.12},
+        {"label": "bright/dim", "thresh": (175, 160, 145, 130), "close": 7, "open": 13, "amin": 0.06, "amax": 0.96, "tol": 0.18},
+        {"label": "bright/loose", "thresh": (205, 185, 165, 150), "close": 11, "open": 5, "amin": 0.05, "amax": 0.97, "tol": 0.30},
+        {"label": "edges", "thresh": (), "close": 0, "open": 0, "amin": 0.05, "amax": 0.97, "tol": 0.30},  # canny/adaptive fallback
+    ]
 
-        When the paper size is known (the user selected it), the expected
-        short/long aspect ratio constrains candidate selection so the detector
-        rejects table edges, mats, and bright backgrounds that merely look
-        rectangular."""
+    def detect_paper_corners(
+        self, image_path: str, paper_size: PaperSize | None = None, attempt: int | None = None
+    ) -> tuple[list[tuple[float, float]] | None, int | None]:
+        """detect paper corners by masking out tools first. Returns
+        (corners, strategy_index). When the paper size is known its aspect
+        ratio constrains the search. attempt=None cascades through every
+        strategy and returns the first that finds the sheet; a specific attempt
+        runs just that rung (used by the user-driven re-detect/retry button)."""
         img = cv2.imread(image_path)
         if img is None:
-            return None
+            logger.warning("paper detection: could not read %s", image_path)
+            return None, None
 
         tool_mask = self._get_tool_mask(image_path)
         img[tool_mask > 0] = [0, 0, 0]
-
+        h, w = img.shape[:2]
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         target = self._target_aspect(paper_size)
-        result = self._detect_paper(img, target)
-        if result is None and target is not None:
-            # the aspect-constrained pass found nothing (e.g. a perspective-skewed
-            # sheet drifted past the tolerance). Fall back to an unconstrained
-            # detection so the user still gets a rough, editable quad rather than
-            # the corners silently not changing when they pick a paper size.
-            result = self._detect_paper(img, None)
-        return result
+        n = len(self.PAPER_STRATEGIES)
+
+        def run(idx: int, asp: float | None) -> list[tuple[float, float]] | None:
+            p = self.PAPER_STRATEGIES[idx]
+            if p["label"] == "edges":
+                return self._detect_paper_edges(gray, img, h, w, asp)
+            return self._bright_quad_strategy(gray, h, w, asp, p)
+
+        if attempt is not None:
+            idx = attempt % n
+            corners = run(idx, target) or (run(idx, None) if target is not None else None)
+            if corners:
+                logger.info("paper detected on retry strategy %d (%s)", idx, self.PAPER_STRATEGIES[idx]["label"])
+                return corners, idx
+            logger.warning("paper detection failed on retry strategy %d for %s", idx, image_path)
+            return None, None
+
+        # initial detection: cascade through the ladder, with the aspect target
+        # first, then a looser unconstrained pass.
+        for asp in (target, None) if target is not None else (None,):
+            for idx in range(n):
+                corners = run(idx, asp)
+                if corners:
+                    logger.info("paper detected on strategy %d (%s)", idx, self.PAPER_STRATEGIES[idx]["label"])
+                    return corners, idx
+        logger.warning("paper detection found nothing for %s (all strategies)", image_path)
+        return None, None
 
     @staticmethod
     def _target_aspect(paper_size: PaperSize | None) -> float | None:
@@ -157,36 +189,61 @@ class ImageProcessor:
         a, b = PAPER_SIZES[paper_size]
         return min(a, b) / max(a, b)
 
-    def _detect_paper(
-        self, img: np.ndarray, target_aspect: float | None = None
+    def _bright_quad_strategy(
+        self, gray: np.ndarray, h: int, w: int, target_aspect: float | None, p: dict
     ) -> list[tuple[float, float]] | None:
-        """core paper detection on an image (possibly with tools blacked out)."""
-        h, w = img.shape[:2]
+        """find the paper as a bright quad using one parameter rung."""
+        best = None  # (score, corners_src, aspect)
+        ck = p["close"] | 1
+        ok = p["open"] | 1
+        for tv in p["thresh"]:
+            _, th = cv2.threshold(gray, tv, 255, cv2.THRESH_BINARY)
+            th = cv2.morphologyEx(th, cv2.MORPH_CLOSE, np.ones((ck, ck), np.uint8), iterations=2)
+            th = cv2.morphologyEx(th, cv2.MORPH_OPEN, np.ones((ok, ok), np.uint8), iterations=1)
+            contours, _ = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            for c in sorted(contours, key=cv2.contourArea, reverse=True)[:5]:
+                area = cv2.contourArea(c)
+                if area < h * w * p["amin"] or area > h * w * p["amax"]:
+                    continue
+                rect = cv2.minAreaRect(c)
+                rw, rh = rect[1]
+                if rw == 0 or rh == 0:
+                    continue
+                aspect = min(rw, rh) / max(rw, rh)
+                if target_aspect is not None:
+                    if abs(aspect - target_aspect) > p["tol"]:
+                        continue
+                elif aspect < 0.55 or aspect > 0.9:
+                    continue
+                quad = self._quad_from_contour(c)
+                corners_src = quad if quad is not None else cv2.boxPoints(rect).astype(float)
+                # prefer the closest aspect match (or the largest with no target)
+                score = abs(aspect - target_aspect) if target_aspect is not None else -area
+                if best is None or score < best[0]:
+                    best = (score, corners_src, aspect)
+        if best is None:
+            return None
+        corners = self._order_corners(np.asarray(best[1], dtype=float))
+        return [(float(x), float(y)) for x, y in corners]
+
+    def _detect_paper_edges(
+        self, gray: np.ndarray, img: np.ndarray, h: int, w: int, target_aspect: float | None
+    ) -> list[tuple[float, float]] | None:
+        """edge/contour fallback (canny + adaptive threshold)."""
         min_area = (h * w) * 0.05
-        max_area = (h * w) * 0.85
+        max_area = (h * w) * 0.97
         edge_margin = int(min(h, w) * 0.02)
-
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-        bright_result = self._detect_bright_region(img, gray, min_area, max_area, edge_margin, h, w, target_aspect)
-        if bright_result:
-            return bright_result
-
-        strategies = [
+        for edges in (
             self._detect_canny(gray, 50, 150),
             self._detect_canny(gray, 30, 100),
-            self._detect_canny(gray, 75, 200),
             self._detect_adaptive_threshold(gray),
             self._detect_saturation(img),
-        ]
-
-        for edges in strategies:
+        ):
             if edges is None:
                 continue
             result = self._find_paper_contour(edges, min_area, max_area, edge_margin, h, w, target_aspect)
             if result:
                 return result
-
         return None
 
     def _detect_bright_region(
