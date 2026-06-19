@@ -3,16 +3,21 @@
 import { useState, useEffect, useRef } from 'react'
 import { Settings } from 'lucide-react'
 import { getSettings, saveSettings } from '@/lib/settings'
+import { PAPER_SIZE_OPTIONS, DEFAULT_PAPER_SIZE } from '@/lib/paper'
+import type { PaperSize } from '@/types'
 import { IconButton } from '@/components/IconButton'
 import { NumericInput } from '@/components/NumericInput'
 
 export function SettingsPopover() {
   const [open, setOpen] = useState(false)
   const [bedSize, setBedSize] = useState(256)
+  const [paperSize, setPaperSize] = useState<PaperSize>(DEFAULT_PAPER_SIZE)
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    setBedSize(getSettings().bedSize)
+    const s = getSettings()
+    setBedSize(s.bedSize)
+    setPaperSize(s.defaultPaperSize)
   }, [])
 
   useEffect(() => {
@@ -29,6 +34,11 @@ export function SettingsPopover() {
   function handleBedSizeChange(v: number) {
     setBedSize(v)
     saveSettings({ bedSize: v })
+  }
+
+  function handlePaperSizeChange(v: PaperSize) {
+    setPaperSize(v)
+    saveSettings({ defaultPaperSize: v })
   }
 
   const pct = ((bedSize - 150) / (400 - 150)) * 100
@@ -72,6 +82,28 @@ export function SettingsPopover() {
             </div>
             <p className="text-[11px] text-text-muted leading-tight mt-1">
               Bins wider than this are automatically split into printable pieces.
+            </p>
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-border space-y-1.5">
+            <span className="text-xs text-text-primary tracking-[0.3px]">Default Paper Size</span>
+            <div className="grid grid-cols-2 gap-0.5 rounded-[10px] glass p-0.5 mt-1.5 w-full">
+              {PAPER_SIZE_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => handlePaperSizeChange(option.value)}
+                  className={`h-7 px-2 rounded text-xs font-medium whitespace-nowrap ${
+                    paperSize === option.value
+                      ? 'bg-surface text-text-primary shadow-sm'
+                      : 'text-text-muted hover:text-text-primary'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-text-muted leading-tight mt-1">
+              Pre-selected when tracing a new photo.
             </p>
           </div>
         </div>

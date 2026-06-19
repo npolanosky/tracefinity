@@ -1,11 +1,13 @@
-import type { BinDefaults } from '@/types'
+import type { BinDefaults, PaperSize } from '@/types'
+import { DEFAULT_PAPER_SIZE } from '@/lib/paper'
 
 export interface UserSettings {
   bedSize: number
+  defaultPaperSize: PaperSize
   binDefaults?: Partial<BinDefaults>
 }
 
-const DEFAULTS: UserSettings = { bedSize: 256 }
+const DEFAULTS: UserSettings = { bedSize: 256, defaultPaperSize: DEFAULT_PAPER_SIZE }
 const KEY = 'tracefinity-settings'
 
 export function getSettings(): UserSettings {
