@@ -15,9 +15,11 @@ class Settings(BaseSettings):
     openrouter_label_model: str = "google/gemini-2.0-flash-001"
     gemini_image_model: str = "gemini-3.1-flash-image-preview"
     gemini_label_model: str = "gemini-2.0-flash"
-    # optional local Ollama for tool naming (vision model, e.g. llava)
+    # optional local Ollama for tool naming (vision model). qwen2.5vl reads
+    # brand text well and IDs tools specifically: :7b ~6GB VRAM (default),
+    # :32b ~21GB for a bigger GPU. llava also works but is weaker.
     ollama_base_url: Optional[str] = None  # e.g. http://192.168.2.78:11434
-    ollama_label_model: str = "llava"
+    ollama_label_model: str = "qwen2.5vl:7b"
     max_upload_mb: int = 20
     log_level: str = "INFO"
     proxy_secret: Optional[str] = None
