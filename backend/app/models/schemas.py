@@ -58,6 +58,14 @@ class CornersResponse(BaseModel):
     scale_factor: float
 
 
+class DetectCornersRequest(BaseModel):
+    paper_size: PaperSize | None = None
+
+
+class DetectCornersResponse(BaseModel):
+    corners: list[Point] | None
+
+
 class TraceRequest(BaseModel):
     provider: Literal["google"] = "google"
     api_key: str | None = None
