@@ -24,6 +24,15 @@ export function PaperCornerEditor({ imageUrl, corners, onCornersChange }: Props)
   const [draftCorners, setDraftCorners] = useState<Point[] | null>(null)
   const displayCorners = draftCorners ?? corners
 
+  // When the corners prop changes from the outside (e.g. re-detecting after the
+  // user picks a paper size), clear any stale local draft so the handles move to
+  // the newly detected position. onCornersChange only fires on drag-end, so this
+  // never interferes with an in-progress drag.
+  useEffect(() => {
+    draftCornersRef.current = null
+    setDraftCorners(null)
+  }, [corners])
+
   useEffect(() => {
     let cancelled = false
     const img = new Image()
