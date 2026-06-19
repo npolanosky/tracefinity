@@ -31,6 +31,18 @@ NAME_PROMPT = (
     '"needle nose pliers"). If you cannot tell, reply "tool".'
 )
 
+# Small local vision models (llava, moondream, ...) treat an explicit
+# "reply 'tool' if unsure" escape hatch as a free pass and return the generic
+# word instead of committing. This variant removes the easy-out and forces a
+# concrete single guess, which yields far more useful names from weak models.
+LOCAL_NAME_PROMPT = (
+    "What hand tool is shown in this photo? Identify it as specifically as you "
+    "can. Reply with ONLY its common name in 1-3 lowercase words (for example: "
+    "wrench, phillips screwdriver, needle nose pliers, ball peen hammer, "
+    "socket wrench, tape measure). Always give your single best guess even if "
+    "you are unsure. Output only the name, nothing else."
+)
+
 
 @runtime_checkable
 class ToolNamer(Protocol):
@@ -141,6 +153,8 @@ class OllamaToolNamer:
         async def post(client, path, payload):
             return await client.post(f"{self.base_url}{path}", json=payload)
 
+        # temperature 0 for a deterministic, low-waffle answer from small models
+        options = {"temperature": 0}
         try:
             async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
                 # modern Ollama (>=0.1.14): /api/chat. Some Ollama/model combos
@@ -150,8 +164,9 @@ class OllamaToolNamer:
                 # so fall back to it on ANY error and surface the body either way.
                 resp = await post(client, "/api/chat", {
                     "model": self.model,
-                    "messages": [{"role": "user", "content": NAME_PROMPT, "images": [b64]}],
+                    "messages": [{"role": "user", "content": LOCAL_NAME_PROMPT, "images": [b64]}],
                     "stream": False,
+                    "options": options,
                 })
                 if resp.status_code >= 400:
                     logger.warning(
@@ -160,9 +175,10 @@ class OllamaToolNamer:
                     )
                     resp = await post(client, "/api/generate", {
                         "model": self.model,
-                        "prompt": NAME_PROMPT,
+                        "prompt": LOCAL_NAME_PROMPT,
                         "images": [b64],
                         "stream": False,
+                        "options": options,
                     })
                 if resp.status_code >= 400:
                     logger.warning(
@@ -173,7 +189,11 @@ class OllamaToolNamer:
                 data = resp.json()
                 # /api/chat -> message.content ; /api/generate -> response
                 text = (data.get("message") or {}).get("content") or data.get("response", "")
-                return clean_name(text)
+                name = clean_name(text)
+                # surface what the model actually said -- a generic "tool" (or
+                # empty) usually means the model can't identify it, not a bug.
+                logger.info("ollama %r named tool: %r (raw=%r)", self.model, name, (text or "")[:120])
+                return name
         except Exception as e:  # best-effort; never break the caller
             logger.warning("ollama tool naming failed: %s", e)
             return None
