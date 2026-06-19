@@ -301,6 +301,15 @@ class SaveToolsResponse(BaseModel):
     tool_ids: list[str]
 
 
+class NameToolsRequest(BaseModel):
+    polygon_ids: list[str] | None = None  # None = name all detected polygons
+    api_key: str | None = None  # optional per-request key when no server key is set
+
+
+class NameToolsResponse(BaseModel):
+    labels: dict[str, str]  # polygon_id -> generated name
+
+
 # --- bin projects ---
 
 ProjectStatus = Literal["active", "ready_to_print", "printed", "archived"]

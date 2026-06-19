@@ -3,12 +3,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useDebouncedSave } from '@/hooks/useDebouncedSave'
-import { Loader2, Copy, Upload, Download, Check, ChevronDown, ChevronRight } from 'lucide-react'
+import { Loader2, Copy, Upload, Download, Check, ChevronDown, ChevronRight, Sparkles } from 'lucide-react'
 import { PaperCornerEditor } from '@/components/PaperCornerEditor'
 import { PolygonEditor } from '@/components/PolygonEditor'
 import { SessionInfo } from '@/components/SessionInfo'
 import { Alert } from '@/components/Alert'
-import { getSession, setCorners, traceTools, updatePolygons, updateSession, getImageUrl, getAvailableKeys, traceFromMask, saveToolsFromSession } from '@/lib/api'
+import { getSession, setCorners, traceTools, updatePolygons, updateSession, getImageUrl, getAvailableKeys, traceFromMask, saveToolsFromSession, nameTools } from '@/lib/api'
 import { CornersHint, TraceHint, EditHint } from '@/components/OnboardingIllustrations'
 import { StepBar } from '@/components/StepBar'
 import type { PaperSize, Point, Polygon, Session } from '@/types'
@@ -59,6 +59,8 @@ export default function TracePage() {
   const [hasEnvKey, setHasEnvKey] = useState(false)
   const [providerLabel, setProviderLabel] = useState<string | null>(null)
   const [providerType, setProviderType] = useState<string | null>(null)
+  const [namingAvailable, setNamingAvailable] = useState(false)
+  const [naming, setNaming] = useState(false)
   const [tracers, setTracers] = useState<{ id: string; label: string }[]>([])
   const [selectedTracer, setSelectedTracer] = useState<string | null>(null)
   const [methodOpen, setMethodOpen] = useState(false)
@@ -93,6 +95,7 @@ export default function TracePage() {
         ])
         setSession(s)
         setHasEnvKey(keys.google)
+        setNamingAvailable(keys.tool_naming)
         setProviderLabel(keys.provider_label)
         setProviderType(keys.provider)
         setTracers(keys.tracers || [])
@@ -309,6 +312,26 @@ export default function TracePage() {
       setError(err instanceof Error ? err.message : 'failed to save tools')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const canAutoName = namingAvailable || apiKey.trim().length > 0
+
+  async function handleAutoName() {
+    // name the selected tools, or all detected tools if none are selected
+    const ids = includedPolygons.size > 0 ? Array.from(includedPolygons) : polygons.map(p => p.id)
+    if (ids.length === 0) return
+    setNaming(true)
+    setError(null)
+    try {
+      const labels = await nameTools(sessionId, ids, hasEnvKey ? undefined : apiKey)
+      if (Object.keys(labels).length > 0) {
+        setPolygons(prev => prev.map(p => (labels[p.id] ? { ...p, label: labels[p.id] } : p)))
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'failed to name tools')
+    } finally {
+      setNaming(false)
     }
   }
 
@@ -539,6 +562,22 @@ export default function TracePage() {
                     : `${includedPolygons.size} of ${polygons.length} selected. Click to add or remove.`}
               </p>
 
+              {polygons.length > 0 && canAutoName && (
+                <button
+                  onClick={handleAutoName}
+                  disabled={naming}
+                  className="btn-secondary w-full py-1.5 text-xs inline-flex items-center justify-center gap-1.5"
+                  title="Use AI to name the tools from their photos. You can edit names before saving."
+                >
+                  {naming ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  {naming
+                    ? 'Naming...'
+                    : includedPolygons.size > 0
+                      ? `Auto-name ${includedPolygons.size} selected`
+                      : 'Auto-name tools'}
+                </button>
+              )}
+
               {polygons.length > 0 && (
                 <div className="text-xs space-y-0.5">
                   {polygons.map((p) => {
@@ -565,7 +604,16 @@ export default function TracePage() {
                         }`}>
                           {isIncluded && <Check className="w-2.5 h-2.5 text-white" />}
                         </div>
-                        <span className="truncate">{p.label}</span>
+                        <input
+                          value={p.label}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            const value = e.target.value
+                            setPolygons(prev => prev.map(q => (q.id === p.id ? { ...q, label: value } : q)))
+                          }}
+                          className="flex-1 min-w-0 bg-transparent outline-none truncate rounded px-1 focus:bg-elevated focus:text-text-primary"
+                          aria-label={`Tool name for ${p.label}`}
+                        />
                       </div>
                     )
                   })}

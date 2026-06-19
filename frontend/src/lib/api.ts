@@ -87,8 +87,23 @@ export interface TracerInfo {
   label: string
 }
 
-export async function getAvailableKeys(): Promise<{ google: boolean; provider: string | null; provider_label: string | null; tracers: TracerInfo[] }> {
+export async function getAvailableKeys(): Promise<{ google: boolean; tool_naming: boolean; provider: string | null; provider_label: string | null; tracers: TracerInfo[] }> {
   return fetchApi('/api/api-keys')
+}
+
+export async function nameTools(
+  sessionId: string,
+  polygonIds?: string[],
+  apiKey?: string,
+): Promise<Record<string, string>> {
+  const res = await fetchApi<{ labels: Record<string, string> }>(`/api/sessions/${sessionId}/name-tools`, {
+    method: 'POST',
+    body: JSON.stringify({
+      polygon_ids: polygonIds ?? null,
+      api_key: apiKey || null,
+    }),
+  })
+  return res.labels
 }
 
 export async function traceTools(
