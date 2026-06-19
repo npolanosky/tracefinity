@@ -94,6 +94,7 @@ class AITracer:
         self.replicate_resolution = replicate_resolution
         self.uses_saliency = saliency_tracer is not None
         self._saliency_backend = None
+        self._cpu_saliency_session = None  # lazy CPU fallback for rembg GPU failures
 
         if self.uses_saliency:
             self._init_saliency_backend()
@@ -227,6 +228,18 @@ class AITracer:
             return None
         return best[1], best[2], best[3], best[4]
 
+    def _get_cpu_saliency_session(self):
+        """Lazily build (and cache) a CPU rembg session for the current model.
+        Used to recover from GPU inference failures (e.g. OOM on a large model
+        like birefnet-general) without reloading the graph every call."""
+        if self._cpu_saliency_session is None:
+            from rembg import new_session
+            logging.info("building CPU fallback session for %s", self.saliency_tracer)
+            self._cpu_saliency_session = new_session(
+                REMBG_MODELS[self.saliency_tracer], providers=["CPUExecutionProvider"]
+            )
+        return self._cpu_saliency_session
+
     async def _saliency_on_image(self, pil_img):
         """run the configured saliency backend, return foreground mask (fg=255)."""
         kind, handle = self._saliency_backend
@@ -234,7 +247,18 @@ class AITracer:
             return await self._saliency_remote(pil_img, handle)
         if kind == "rembg":
             from rembg import remove
-            result = remove(pil_img, session=handle)
+            try:
+                result = remove(pil_img, session=handle)
+            except Exception:
+                # CUDA inference can fault at run time on large models (OOM /
+                # unsupported op), which session creation didn't catch. Retry
+                # on a cached CPU session so the trace still succeeds (slowly)
+                # instead of returning a 500.
+                logging.warning(
+                    "%s GPU inference failed; retrying on CPU", self.saliency_tracer,
+                    exc_info=True,
+                )
+                result = remove(pil_img, session=self._get_cpu_saliency_session())
             alpha = np.array(result)[:, :, 3]
             _, binary = cv2.threshold(alpha, 127, 255, cv2.THRESH_BINARY)
             return binary
