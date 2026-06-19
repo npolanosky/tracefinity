@@ -123,8 +123,15 @@ class ImageProcessor:
         _, mask = cv2.threshold(alpha, 127, 255, cv2.THRESH_BINARY)
         return mask
 
-    def detect_paper_corners(self, image_path: str) -> list[tuple[float, float]] | None:
-        """detect paper corners by masking out tools first."""
+    def detect_paper_corners(
+        self, image_path: str, paper_size: PaperSize | None = None
+    ) -> list[tuple[float, float]] | None:
+        """detect paper corners by masking out tools first.
+
+        When the paper size is known (the user selected it), the expected
+        short/long aspect ratio constrains candidate selection so the detector
+        rejects table edges, mats, and bright backgrounds that merely look
+        rectangular."""
         img = cv2.imread(image_path)
         if img is None:
             return None
@@ -132,9 +139,19 @@ class ImageProcessor:
         tool_mask = self._get_tool_mask(image_path)
         img[tool_mask > 0] = [0, 0, 0]
 
-        return self._detect_paper(img)
+        return self._detect_paper(img, self._target_aspect(paper_size))
 
-    def _detect_paper(self, img: np.ndarray) -> list[tuple[float, float]] | None:
+    @staticmethod
+    def _target_aspect(paper_size: PaperSize | None) -> float | None:
+        """expected short/long edge ratio for a known sheet, else None."""
+        if paper_size is None or paper_size not in PAPER_SIZES:
+            return None
+        a, b = PAPER_SIZES[paper_size]
+        return min(a, b) / max(a, b)
+
+    def _detect_paper(
+        self, img: np.ndarray, target_aspect: float | None = None
+    ) -> list[tuple[float, float]] | None:
         """core paper detection on an image (possibly with tools blacked out)."""
         h, w = img.shape[:2]
         min_area = (h * w) * 0.05
@@ -143,7 +160,7 @@ class ImageProcessor:
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        bright_result = self._detect_bright_region(img, gray, min_area, max_area, edge_margin, h, w)
+        bright_result = self._detect_bright_region(img, gray, min_area, max_area, edge_margin, h, w, target_aspect)
         if bright_result:
             return bright_result
 
@@ -158,7 +175,7 @@ class ImageProcessor:
         for edges in strategies:
             if edges is None:
                 continue
-            result = self._find_paper_contour(edges, min_area, max_area, edge_margin, h, w)
+            result = self._find_paper_contour(edges, min_area, max_area, edge_margin, h, w, target_aspect)
             if result:
                 return result
 
@@ -166,7 +183,8 @@ class ImageProcessor:
 
     def _detect_bright_region(
         self, img: np.ndarray, gray: np.ndarray,
-        min_area: float, max_area: float, margin: int, h: int, w: int
+        min_area: float, max_area: float, margin: int, h: int, w: int,
+        target_aspect: float | None = None,
     ) -> list[tuple[float, float]] | None:
         """detect paper by finding bright white region"""
         # try all thresholds and pick the largest valid candidate
@@ -174,7 +192,7 @@ class ImageProcessor:
         best_area = 0
         for thresh_val in [200, 190, 180]:
             result, area = self._try_brightness_threshold(
-                gray, thresh_val, min_area, max_area, margin, h, w
+                gray, thresh_val, min_area, max_area, margin, h, w, target_aspect
             )
             if result and area > best_area:
                 best_result = result
@@ -183,7 +201,8 @@ class ImageProcessor:
 
     def _try_brightness_threshold(
         self, gray: np.ndarray, thresh_val: int,
-        min_area: float, max_area: float, margin: int, h: int, w: int
+        min_area: float, max_area: float, margin: int, h: int, w: int,
+        target_aspect: float | None = None,
     ) -> tuple[list[tuple[float, float]] | None, float]:
         """try to find paper at a specific brightness threshold. returns (corners, area)."""
         _, thresh = cv2.threshold(gray, thresh_val, 255, cv2.THRESH_BINARY)
@@ -208,6 +227,7 @@ class ImageProcessor:
 
         best = None
         best_area = 0
+        best_score = None  # lower aspect error is better when a target is known
 
         for contour in candidates:
             area = cv2.contourArea(contour)
@@ -239,17 +259,32 @@ class ImageProcessor:
             if rect_w == 0 or rect_h == 0:
                 continue
             aspect = min(rect_w, rect_h) / max(rect_w, rect_h)
-            if aspect < 0.55 or aspect > 0.85:
+            if target_aspect is not None:
+                # known sheet: demand the measured ratio match it (perspective tol)
+                if abs(aspect - target_aspect) > 0.06:
+                    continue
+            elif aspect < 0.55 or aspect > 0.85:
                 continue
 
-            # prefer the largest valid candidate
-            if area > best_area:
-                best = (box, aspect, fill_ratio)
+            # refine to the contour's true 4 corners; fall back to the box
+            quad = self._quad_from_contour(contour)
+            corners_src = quad if quad is not None else box.astype(float)
+
+            if target_aspect is not None:
+                # pick the closest aspect match (tie-break on area)
+                score = abs(aspect - target_aspect)
+                if best_score is None or score < best_score or (score == best_score and area > best_area):
+                    best = (corners_src, aspect, fill_ratio)
+                    best_score = score
+                    best_area = area
+            elif area > best_area:
+                # no target: prefer the largest valid candidate (legacy behaviour)
+                best = (corners_src, aspect, fill_ratio)
                 best_area = area
 
         if best:
-            box, aspect, fill_ratio = best
-            corners = self._order_corners(box.astype(float))
+            corners_src, aspect, fill_ratio = best
+            corners = self._order_corners(np.asarray(corners_src, dtype=float))
             result = [(float(c[0]), float(c[1])) for c in corners]
             logger.info("paper detected: thresh=%d aspect=%.2f fill=%.2f area=%.0f", thresh_val, aspect, fill_ratio, best_area)
             return result, best_area
@@ -258,7 +293,8 @@ class ImageProcessor:
         return None, 0
 
     def _find_paper_contour(
-        self, edges: np.ndarray, min_area: float, max_area: float, margin: int, h: int, w: int
+        self, edges: np.ndarray, min_area: float, max_area: float, margin: int, h: int, w: int,
+        target_aspect: float | None = None,
     ) -> list[tuple[float, float]] | None:
         """find paper rectangle from edge image"""
         kernel = np.ones((3, 3), np.uint8)
@@ -281,6 +317,13 @@ class ImageProcessor:
             approx = cv2.approxPolyDP(contour, 0.02 * peri, True)
 
             if len(approx) == 4 and self._is_roughly_rectangular(approx):
+                if target_aspect is not None:
+                    rect_w, rect_h = cv2.minAreaRect(approx)[1]
+                    if rect_w == 0 or rect_h == 0:
+                        continue
+                    aspect = min(rect_w, rect_h) / max(rect_w, rect_h)
+                    if abs(aspect - target_aspect) > 0.06:
+                        continue
                 corners = self._order_corners(approx.reshape(4, 2))
                 return [(float(c[0]), float(c[1])) for c in corners]
 
@@ -323,15 +366,36 @@ class ImageProcessor:
         return cv2.Canny(thresh, 50, 150)
 
     def _order_corners(self, pts: np.ndarray) -> np.ndarray:
-        """order corners: top-left, top-right, bottom-right, bottom-left"""
-        rect = np.zeros((4, 2), dtype="float32")
-        s = pts.sum(axis=1)
-        rect[0] = pts[np.argmin(s)]
-        rect[2] = pts[np.argmax(s)]
-        diff = np.diff(pts, axis=1)
-        rect[1] = pts[np.argmin(diff)]
-        rect[3] = pts[np.argmax(diff)]
-        return rect
+        """order corners clockwise as top-left, top-right, bottom-right,
+        bottom-left. Angle-sorts around the centroid so it stays correct for
+        rotated/skewed quads -- the classic sum/diff heuristic only holds for
+        near axis-aligned rectangles and swaps corners once the paper is
+        rotated past ~45deg in frame."""
+        pts = np.asarray(pts, dtype="float32").reshape(-1, 2)
+        c = pts.mean(axis=0)
+        # consistent rotational cycle around the centroid
+        angles = np.arctan2(pts[:, 1] - c[1], pts[:, 0] - c[0])
+        pts = pts[np.argsort(angles)]
+        # start the cycle at the corner nearest the image top-left (min x+y)
+        start = int(np.argmin(pts.sum(axis=1)))
+        pts = np.roll(pts, -start, axis=0)
+        # force clockwise winding (TL -> TR -> BR -> BL) in image coords (y down)
+        if pts[1][1] > pts[3][1]:
+            pts = pts[[0, 3, 2, 1]]
+        return pts.astype("float32")
+
+    def _quad_from_contour(self, contour: np.ndarray) -> np.ndarray | None:
+        """fit a 4-point convex quad to a contour via approxPolyDP -- the
+        paper's true corners, not the enclosing minAreaRect box (which rounds
+        outward and squares off the perspective quad). Returns 4x2 or None."""
+        peri = cv2.arcLength(contour, True)
+        if peri <= 0:
+            return None
+        for eps in (0.02, 0.03, 0.05, 0.08):
+            approx = cv2.approxPolyDP(contour, eps * peri, True)
+            if len(approx) == 4 and cv2.isContourConvex(approx):
+                return approx.reshape(4, 2).astype(float)
+        return None
 
     def apply_perspective_correction(
         self,

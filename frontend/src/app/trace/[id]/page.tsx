@@ -8,7 +8,7 @@ import { PaperCornerEditor } from '@/components/PaperCornerEditor'
 import { PolygonEditor } from '@/components/PolygonEditor'
 import { SessionInfo } from '@/components/SessionInfo'
 import { Alert } from '@/components/Alert'
-import { getSession, setCorners, traceTools, updatePolygons, updateSession, getImageUrl, getAvailableKeys, traceFromMask, saveToolsFromSession, nameTools } from '@/lib/api'
+import { getSession, setCorners, detectCorners, traceTools, updatePolygons, updateSession, getImageUrl, getAvailableKeys, traceFromMask, saveToolsFromSession, nameTools } from '@/lib/api'
 import { CornersHint, TraceHint, EditHint } from '@/components/OnboardingIllustrations'
 import { StepBar } from '@/components/StepBar'
 import { PAPER_SIZE_OPTIONS, DEFAULT_PAPER_SIZE } from '@/lib/paper'
@@ -45,6 +45,7 @@ export default function TracePage() {
 
   const [corners, setLocalCorners] = useState<Point[]>([])
   const [cornersAutoDetected, setCornersAutoDetected] = useState(false)
+  const [redetecting, setRedetecting] = useState(false)
   const [paperSize, setPaperSize] = useState<PaperSize>(DEFAULT_PAPER_SIZE)
   const [imageUrl, setImageUrl] = useState<string>('')
   const [correctedImageUrl, setCorrectedImageUrl] = useState<string>('')
@@ -142,6 +143,24 @@ export default function TracePage() {
   }, [session, step, correctedImageUrl, sessionId])
 
   const singleTracer = tracers.length <= 1
+
+  // re-run detection constrained to the now-known paper size; picking the size
+  // the user actually used lets the backend reject table edges/backgrounds.
+  async function handleSelectPaperSize(size: PaperSize) {
+    setPaperSize(size)
+    setRedetecting(true)
+    try {
+      const detected = await detectCorners(sessionId, size)
+      if (detected && detected.length === 4) {
+        setLocalCorners(detected)
+        setCornersAutoDetected(true)
+      }
+    } catch {
+      // keep the current corners if re-detection fails
+    } finally {
+      setRedetecting(false)
+    }
+  }
 
   async function handleCornersSubmit() {
     if (corners.length !== 4) return
@@ -397,13 +416,22 @@ export default function TracePage() {
               )}
 
               <div>
-                <span className="text-xs text-text-primary tracking-[0.3px]">Paper Size</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-text-primary tracking-[0.3px]">Paper Size</span>
+                  {redetecting && (
+                    <span className="inline-flex items-center gap-1 text-[10px] text-text-muted">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Re-detecting…
+                    </span>
+                  )}
+                </div>
                 <div className="grid grid-cols-2 gap-0.5 rounded-[10px] glass p-0.5 mt-1.5 w-full">
                   {PAPER_SIZE_OPTIONS.map((option) => (
                     <button
                       key={option.value}
-                      onClick={() => setPaperSize(option.value)}
-                      className={`h-7 px-2 rounded text-xs font-medium whitespace-nowrap ${
+                      onClick={() => handleSelectPaperSize(option.value)}
+                      disabled={redetecting}
+                      className={`h-7 px-2 rounded text-xs font-medium whitespace-nowrap disabled:opacity-60 ${
                         paperSize === option.value
                           ? 'bg-surface text-text-primary shadow-sm'
                           : 'text-text-muted hover:text-text-primary'
@@ -413,6 +441,9 @@ export default function TracePage() {
                     </button>
                   ))}
                 </div>
+                <p className="text-[11px] text-text-muted leading-tight mt-1.5">
+                  Picking your sheet re-detects the corners using its known proportions.
+                </p>
               </div>
             </div>
           )}

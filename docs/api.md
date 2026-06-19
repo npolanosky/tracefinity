@@ -2,6 +2,7 @@
 
 ## Sessions (trace workflow)
 - `POST /api/upload` - upload image, auto-detect corners
+- `POST /api/sessions/{id}/detect-corners` - re-run paper detection constrained by the chosen paper size
 - `POST /api/sessions/{id}/corners` - set corners, apply perspective correction
 - `POST /api/sessions/{id}/trace` - AI trace tool outlines
 - `POST /api/sessions/{id}/trace-mask` - trace from uploaded mask

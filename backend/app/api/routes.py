@@ -23,6 +23,8 @@ from app.models.schemas import (
     UploadResponse,
     CornersRequest,
     CornersResponse,
+    DetectCornersRequest,
+    DetectCornersResponse,
     TraceRequest,
     TraceResponse,
     PolygonsRequest,
@@ -586,6 +588,28 @@ async def upload_image(request: Request, image: UploadFile, user_id: str = Depen
         image_url=f"/storage/{user_id}/uploads/{session_id}{ext}",
         detected_corners=corner_points,
     )
+
+
+@router.post("/sessions/{session_id}/detect-corners", response_model=DetectCornersResponse)
+async def detect_corners(request: Request, session_id: str, req: DetectCornersRequest = DetectCornersRequest(), user_id: str = Depends(get_user_id)):
+    """Re-run paper detection, constrained by the now-known paper size.
+
+    Detection at upload time doesn't know which sheet the user used; once they
+    pick A4/Letter/etc. the expected aspect ratio lets the detector reject
+    table edges and bright backgrounds. Updates and returns the session corners."""
+    user_sessions, _, _ = get_stores(user_id)
+    session = user_sessions.get(session_id)
+    if not session or not session.original_image_path:
+        raise HTTPException(status_code=404, detail="session not found")
+
+    detected = image_processor.detect_paper_corners(
+        _abs(session.original_image_path), req.paper_size
+    )
+    corner_points = [Point(x=x, y=y) for x, y in detected] if detected else None
+    if corner_points:
+        session.corners = corner_points
+        user_sessions.set(session_id, session)
+    return DetectCornersResponse(corners=corner_points)
 
 
 @router.post("/sessions/{session_id}/corners", response_model=CornersResponse)
