@@ -528,12 +528,27 @@ def _make_finger_holes(
                 if shape == 'circle':
                     r = fh.radius_mm
                     pocket_floor_z = wall_top_z - pocket_depth
-                    sphere_z = max(wall_top_z, pocket_floor_z + r)
-                    # approximate sphere as a cylinder with hemispheric top
-                    # using a simple cylinder for speed; close enough for slicer
-                    cutter = mf.Manifold.sphere(r, circular_segments=ROUND_SEGS).translate(
-                        (fh_x, fh_y, sphere_z)
-                    )
+                    if override is not None and pocket_depth > r:
+                        # explicit depth override deeper than the scoop radius:
+                        # carve a flat-walled cylinder with a rounded (hemispheric)
+                        # bottom so the requested depth is honored. (A bare sphere
+                        # can only reach a depth of r, which silently ignored the
+                        # override for the default circular finger-hole shape.)
+                        sphere_z = pocket_floor_z + r
+                        body = mf.Manifold.cylinder(
+                            pocket_depth - r + 0.01, r, circular_segments=ROUND_SEGS
+                        ).translate((fh_x, fh_y, sphere_z))
+                        bottom = mf.Manifold.sphere(
+                            r, circular_segments=ROUND_SEGS
+                        ).translate((fh_x, fh_y, sphere_z))
+                        cutter = body + bottom
+                    else:
+                        # default thumb-scoop: a sphere clamped to the surface,
+                        # giving a rounded dish at most r deep.
+                        sphere_z = max(wall_top_z, pocket_floor_z + r)
+                        cutter = mf.Manifold.sphere(r, circular_segments=ROUND_SEGS).translate(
+                            (fh_x, fh_y, sphere_z)
+                        )
                 elif shape == 'cylinder':
                     r = fh.radius_mm
                     cutter = (
