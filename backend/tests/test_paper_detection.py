@@ -74,7 +74,8 @@ class TestBrightQuadStrategy:
     def test_detects_a_clean_sheet(self):
         ip = ImageProcessor.__new__(ImageProcessor)  # skip __init__ (no model load)
         gray = self._synthetic_paper()
-        corners = ip._bright_quad_strategy(gray, 1000, 800, 0.773, ImageProcessor.PAPER_STRATEGIES[0])
+        bright = next(s for s in ImageProcessor.PAPER_STRATEGIES if s["label"].startswith("bright"))
+        corners = ip._bright_quad_strategy(gray, 1000, 800, 0.773, bright)
         assert corners is not None and len(corners) == 4
         xs = [c[0] for c in corners]
         ys = [c[1] for c in corners]
@@ -84,5 +85,37 @@ class TestBrightQuadStrategy:
 
     def test_strategy_ladder_present(self):
         labels = [s["label"] for s in ImageProcessor.PAPER_STRATEGIES]
+        assert "saliency" in labels
         assert "edges" in labels
         assert len(ImageProcessor.PAPER_STRATEGIES) >= 3
+
+
+class TestPaperFromSaliency:
+    def _rung(self):
+        return next(s for s in ImageProcessor.PAPER_STRATEGIES if s["label"] == "saliency")
+
+    def _mask_with_tool_hole(self):
+        # a Letter-ratio sheet silhouette (U2-Net grabbed the paper) with the
+        # tool punched out as a hole -- RETR_EXTERNAL must ignore the hole.
+        import cv2
+        m = np.zeros((1000, 800), dtype=np.uint8)
+        cv2.rectangle(m, (120, 100), (680, 820), 255, -1)  # ~0.78 ratio
+        cv2.rectangle(m, (360, 300), (440, 620), 0, -1)    # tool hole
+        return m
+
+    def test_fits_paper_outline_ignoring_hole(self):
+        ip = ImageProcessor.__new__(ImageProcessor)
+        corners = ip._paper_from_saliency(self._mask_with_tool_hole(), 1000, 800, 0.773, self._rung())
+        assert corners is not None and len(corners) == 4
+        xs = [c[0] for c in corners]
+        ys = [c[1] for c in corners]
+        assert min(xs) < 160 and max(xs) > 640
+        assert min(ys) < 140 and max(ys) > 780
+
+    def test_rejects_non_paper_aspect(self):
+        # a long thin blob (a tool, not a sheet) must be rejected
+        import cv2
+        m = np.zeros((1000, 800), dtype=np.uint8)
+        cv2.rectangle(m, (380, 100), (460, 820), 255, -1)  # ~0.11 ratio
+        ip = ImageProcessor.__new__(ImageProcessor)
+        assert ip._paper_from_saliency(m, 1000, 800, None, self._rung()) is None
