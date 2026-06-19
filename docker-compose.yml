@@ -1,8 +1,13 @@
 services:
   tracefinity:
-    build:
-      context: .
-    image: tracefinity-gpu:local
+    # Pull the prebuilt GPU image from GHCR (built by .github/workflows/docker-fork.yml
+    # on every push to dev). To update: re-pull this image and recreate the container
+    # — no local build. For local development instead, comment out image/pull_policy
+    # and uncomment the build block below.
+    image: ghcr.io/npolanosky/tracefinity:dev
+    pull_policy: always
+    # build:
+    #   context: .
     ports:
       - "3030:3000"          # host 3030 (3000/3001 are taken); container listens on 3000
     volumes:
