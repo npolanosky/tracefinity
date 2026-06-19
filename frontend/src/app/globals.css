@@ -265,6 +265,18 @@ input[type="number"] { -moz-appearance: textfield; }
     min-width: 44px;
     min-height: 44px;
   }
+
+  /* Prevent iOS Safari from zooming in when focusing a text field (it zooms
+     for any input under 16px). Scoped to text-like inputs so the small numeric
+     toolbar fields keep their compact size. */
+  input[type='text'],
+  input[type='password'],
+  input[type='search'],
+  input[type='email'],
+  input[type='url'],
+  textarea {
+    font-size: 16px;
+  }
 }
 
 /* upload illustration animations */

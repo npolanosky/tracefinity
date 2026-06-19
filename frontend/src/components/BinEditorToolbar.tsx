@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { MousePointer2, Trash2, Magnet, Type, Pencil, Maximize2 } from 'lucide-react'
+import { MousePointer2, Trash2, Magnet, Type, Pencil, Maximize2, MoreHorizontal } from 'lucide-react'
 import type { FingerHole, PlacedTool, TextLabel } from '@/types'
 import { SNAP_GRID_MIN, SNAP_GRID_MAX } from '@/lib/constants'
 import { cutoutShapeLabel, isRectangularCutout } from '@/lib/cutouts'
@@ -131,6 +131,12 @@ export function BinEditorToolbar({
   onSetCutoutDepthOverride,
   onSetHoleDepthOverride,
 }: Props) {
+  // on mobile the toolbar shows essentials only; "more" reveals the advanced
+  // numeric controls (snap distance, smooth, depth). desktop shows everything.
+  const [showMore, setShowMore] = useState(false)
+  const lbl = 'hidden sm:inline'
+  const more = showMore ? 'inline-flex' : 'hidden sm:inline-flex'
+  const moreFlex = showMore ? 'flex' : 'hidden sm:flex'
   return (
     <>
       <button
@@ -139,7 +145,7 @@ export function BinEditorToolbar({
         title="Select & move tools"
       >
         <MousePointer2 className="w-3.5 h-3.5" />
-        Select
+        <span className={lbl}>Select</span>
       </button>
       <button
         onClick={() => setActiveTool('text')}
@@ -147,7 +153,7 @@ export function BinEditorToolbar({
         title="Place text label"
       >
         <Type className="w-3.5 h-3.5" />
-        Text
+        <span className={lbl}>Text</span>
       </button>
 
       <div className="w-px h-4 bg-glass-border mx-1 flex-shrink-0" />
@@ -158,18 +164,20 @@ export function BinEditorToolbar({
         title={`Snap to ${snapGrid}mm grid${snapEnabled ? ' (on)' : ' (off)'}`}
       >
         <Magnet className="w-3.5 h-3.5" />
-        Snap
+        <span className={lbl}>Snap</span>
       </button>
       {snapEnabled && (
-        <NumericInput
-          value={snapGrid}
-          onChange={setSnapGrid}
-          min={SNAP_GRID_MIN}
-          max={SNAP_GRID_MAX}
-          step={0.5}
-          title="Snap distance (mm) — how far apart the snap grid points are"
-          className="w-12 px-1 py-1 bg-elevated border border-border-subtle rounded-[6px] text-text-primary text-[10px] text-center outline-none focus:border-accent"
-        />
+        <span className={`${more} items-center`}>
+          <NumericInput
+            value={snapGrid}
+            onChange={setSnapGrid}
+            min={SNAP_GRID_MIN}
+            max={SNAP_GRID_MAX}
+            step={0.5}
+            title="Snap distance (mm) — how far apart the snap grid points are"
+            className="w-12 px-1 py-1 bg-elevated border border-border-subtle rounded-[6px] text-text-primary text-[10px] text-center outline-none focus:border-accent"
+          />
+        </span>
       )}
       <button
         onClick={handleRecenter}
@@ -177,7 +185,15 @@ export function BinEditorToolbar({
         title="Recenter view"
       >
         <Maximize2 className="w-3.5 h-3.5" />
-        Recenter
+        <span className={lbl}>Recenter</span>
+      </button>
+      <button
+        onClick={() => setShowMore(s => !s)}
+        className={`${tbBtn} ${tbInactive} sm:hidden`}
+        title="More controls"
+        aria-label="More controls"
+      >
+        <MoreHorizontal className="w-3.5 h-3.5" />
       </button>
 
       {selectedToolCount > 1 && (
@@ -201,7 +217,7 @@ export function BinEditorToolbar({
         <>
           <div className="w-px h-4 bg-glass-border mx-1 flex-shrink-0" />
           {onToggleSmoothed && (
-            <div className="flex items-center rounded-[6px] overflow-hidden border border-glass-border">
+            <div className={`${moreFlex} items-center rounded-[6px] overflow-hidden border border-glass-border`}>
               <button
                 onClick={() => onToggleSmoothed(selectedTool.tool_id, false)}
                 className={`px-2 py-1 text-[10px] font-medium transition-colors cursor-pointer ${!smoothedToolIds?.has(selectedTool.tool_id) ? 'bg-accent text-white' : 'text-text-muted hover:text-text-secondary'}`}
@@ -221,11 +237,11 @@ export function BinEditorToolbar({
               type="range" min={0} max={1} step={0.05}
               value={smoothLevels?.get(selectedTool.tool_id) ?? 0.5}
               onChange={e => onSmoothLevelChange(selectedTool.tool_id, parseFloat(e.target.value))}
-              className="w-16 h-1 accent-accent"
+              className={`${showMore ? 'inline-block' : 'hidden sm:inline-block'} w-16 h-1 accent-accent`}
             />
           )}
           <div
-            className="flex items-center gap-1 text-[10px] text-text-muted"
+            className={`${moreFlex} items-center gap-1 text-[10px] text-text-muted`}
             title={`Cutout depth (mm). Default: ${defaultCutoutDepth.toFixed(1)}mm. Max: ${maxCutoutDepth.toFixed(1)}mm.`}
           >
             <span>Depth</span>

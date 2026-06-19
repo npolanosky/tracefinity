@@ -459,10 +459,11 @@ export default function BinPage() {
   const hasExports = stlUrl || zipUrl || threemfUrl || insertStlUrl
 
   return (
-    <div className="h-[calc(100vh-44px)] flex">
-      {/* config sidebar - always open, width scales with viewport */}
-      <div className="w-[clamp(200px,18vw,280px)] flex-shrink-0 bg-surface border-r border-border flex flex-col">
-        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin p-3 space-y-3">
+    <div className="flex flex-col lg:flex-row lg:h-[calc(100dvh-44px)]">
+      {/* config + export. On mobile this stacks BELOW the canvas/preview (order-2);
+          on desktop it's the left sidebar. */}
+      <div className="order-2 lg:order-1 w-full lg:w-[clamp(200px,18vw,280px)] lg:flex-shrink-0 bg-surface border-t lg:border-t-0 lg:border-r border-border flex flex-col">
+        <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto scrollbar-thin p-3 space-y-3">
           <div className="glass rounded-[10px] px-3 py-3">
             <div className="flex items-center gap-2 mb-3">
               <Breadcrumb segments={[
@@ -594,8 +595,9 @@ export default function BinPage() {
         </div>
       </div>
 
-      {/* right of sidebar: library on top, then canvas + 3D preview below */}
-      <div className="flex-1 min-w-0 flex flex-col">
+      {/* library, then canvas + 3D. On mobile these come first (order-1) and the
+          canvas/preview stack vertically; on desktop it's the right pane. */}
+      <div className="order-1 lg:order-2 lg:flex-1 min-w-0 flex flex-col">
         {/* library strip - full width */}
         <div className="flex-shrink-0 bg-surface border-b border-border px-3 py-2">
           <ToolBrowser
@@ -606,45 +608,45 @@ export default function BinPage() {
             projectId={projectSource.projectId}
             currentToolIds={placedTools.map(tool => tool.tool_id)}
             headerExtra={
-              <div className="flex items-center gap-1 ml-2">
+              <div className="flex items-center gap-1 ml-auto sm:ml-2 flex-shrink-0">
                 <button
                   onClick={() => handleAutoArrangeChange(!autoArrange)}
-                  className={`px-2 py-0.5 rounded-[7px] text-[10px] flex items-center gap-1 transition-colors cursor-pointer ${
+                  className={`px-2 py-1 rounded-[7px] text-[10px] flex items-center gap-1 transition-colors cursor-pointer ${
                     autoArrange ? 'bg-accent-muted text-accent' : 'hover:bg-border/50 text-text-muted'
                   }`}
                   title="Re-pack all tools into the smallest grid whenever one is added"
                 >
-                  <LayoutGrid className="w-3 h-3" />
-                  Auto-arrange
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Auto-arrange</span>
                 </button>
                 <button
                   onClick={() => handleArrangeRotationChange(!arrangeRotation)}
-                  className={`px-2 py-0.5 rounded-[7px] text-[10px] flex items-center gap-1 transition-colors cursor-pointer ${
+                  className={`px-2 py-1 rounded-[7px] text-[10px] flex items-center gap-1 transition-colors cursor-pointer ${
                     arrangeRotation ? 'bg-accent-muted text-accent' : 'hover:bg-border/50 text-text-muted'
                   }`}
                   title="Allow 90-degree rotation when arranging"
                 >
-                  <RotateCw className="w-3 h-3" />
-                  Rotate
+                  <RotateCw className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Rotate</span>
                 </button>
                 <button
                   onClick={() => runArrange(placedTools)}
                   disabled={placedTools.length === 0}
-                  className="px-2 py-0.5 rounded-[7px] text-[10px] flex items-center gap-1 transition-colors cursor-pointer hover:bg-border/50 text-text-muted disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="px-2 py-1 rounded-[7px] text-[10px] flex items-center gap-1 transition-colors cursor-pointer hover:bg-border/50 text-text-muted disabled:opacity-30 disabled:cursor-not-allowed"
                   title="Pack the current tools into the smallest grid now"
                 >
-                  <Sparkles className="w-3 h-3" />
-                  Arrange
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Arrange</span>
                 </button>
               </div>
             }
           />
         </div>
 
-        {/* canvas + 3D preview side by side, equal width */}
-        <div className="flex-1 min-h-0 flex">
+        {/* canvas + 3D preview: stacked on mobile, side by side on desktop */}
+        <div className="flex flex-col lg:flex-row lg:flex-1 lg:min-h-0">
           {/* canvas */}
-          <div className="flex-1 min-w-0 relative bg-inset overflow-hidden" data-testid="bin-editor">
+          <div className="h-[60vh] lg:h-auto lg:flex-1 min-w-0 relative bg-inset overflow-hidden" data-testid="bin-editor">
             <div className="absolute inset-0">
               <BinEditor
                 placedTools={placedTools}
@@ -687,8 +689,8 @@ export default function BinPage() {
             )}
           </div>
 
-          {/* 3D preview - same width as canvas */}
-          <div className="flex-1 min-w-0 bg-surface border-l border-border flex flex-col">
+          {/* 3D preview - stacked below canvas on mobile, beside it on desktop */}
+          <div className="h-[50vh] lg:h-auto lg:flex-1 min-w-0 bg-surface border-t lg:border-t-0 lg:border-l border-border flex flex-col">
             <div className="px-3 py-2 border-b border-border flex-shrink-0">
               <h3 className="text-[10px] font-semibold text-text-muted uppercase tracking-[1.5px]">3D Preview</h3>
             </div>
