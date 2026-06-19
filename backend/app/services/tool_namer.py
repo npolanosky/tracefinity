@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import Optional, Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,10 @@ logger = logging.getLogger(__name__)
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_NAME_LEN = 40
 REQUEST_TIMEOUT = 30
+# local models can be slow to cold-load several GB into VRAM on the first
+# request -- a 30s cap there surfaces as an empty-message ReadTimeout. give
+# Ollama a generous ceiling (override with OLLAMA_TIMEOUT).
+OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "180"))
 
 NAME_PROMPT = (
     "This image shows a single hand tool on a plain background. "
@@ -160,7 +165,7 @@ class OllamaToolNamer:
         # temperature 0 for a deterministic, low-waffle answer from small models
         options = {"temperature": 0}
         try:
-            async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+            async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
                 # modern Ollama (>=0.1.14): /api/chat. Some Ollama/model combos
                 # (older builds, certain llava packagings) 404 when the model
                 # isn't pulled or 500 on a chat request with images, yet serve
@@ -199,7 +204,12 @@ class OllamaToolNamer:
                 logger.info("ollama %r named tool: %r (raw=%r)", self.model, name, (text or "")[:120])
                 return name
         except Exception as e:  # best-effort; never break the caller
-            logger.warning("ollama tool naming failed: %s", e)
+            # surface the type -- some httpx errors (e.g. ReadTimeout) stringify
+            # to an empty message, which otherwise logs as "failed: " with no clue
+            logger.warning(
+                "ollama tool naming failed (%s): %s [base_url=%s model=%r timeout=%ss]",
+                type(e).__name__, e, self.base_url, self.model, OLLAMA_TIMEOUT,
+            )
             return None
 
 
