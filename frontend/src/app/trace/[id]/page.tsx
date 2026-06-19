@@ -620,6 +620,16 @@ export default function TracePage() {
                 </button>
               )}
 
+              {polygons.length > 0 && !canAutoName && (
+                <p className="text-[11px] text-text-muted leading-snug">
+                  <Sparkles className="w-3 h-3 inline-block mr-1 -mt-0.5" />
+                  Tip: set <code className="text-text-secondary">OPENROUTER_API_KEY</code>,{' '}
+                  <code className="text-text-secondary">GOOGLE_API_KEY</code>, or{' '}
+                  <code className="text-text-secondary">OLLAMA_BASE_URL</code> on the server to
+                  auto-name tools with AI. You can also type names below.
+                </p>
+              )}
+
               {polygons.length > 0 && (
                 <div className="text-xs space-y-0.5">
                   {polygons.map((p) => {

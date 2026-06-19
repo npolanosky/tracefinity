@@ -125,6 +125,33 @@ class GeminiToolNamer:
             return resp.json()["choices"][0]["message"]["content"]
 
 
+class OllamaToolNamer:
+    """Names a tool crop using a local Ollama vision model (e.g. llava)."""
+
+    def __init__(self, base_url: str, model: str):
+        self.base_url = base_url.rstrip("/")
+        self.model = model
+
+    async def name(self, image_png: bytes) -> Optional[str]:
+        try:
+            import base64
+            import httpx
+
+            b64 = base64.b64encode(image_png).decode()
+            payload = {
+                "model": self.model,
+                "messages": [{"role": "user", "content": NAME_PROMPT, "images": [b64]}],
+                "stream": False,
+            }
+            async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+                resp = await client.post(f"{self.base_url}/api/chat", json=payload)
+                resp.raise_for_status()
+                return clean_name(resp.json().get("message", {}).get("content", ""))
+        except Exception as e:  # best-effort; never break the caller
+            logger.warning("ollama tool naming failed: %s", e)
+            return None
+
+
 def get_tool_namer(api_key: Optional[str] = None) -> Optional[ToolNamer]:
     """Return a ToolNamer if a naming backend is configured, else None.
 
@@ -145,6 +172,8 @@ def get_tool_namer(api_key: Optional[str] = None) -> Optional[ToolNamer]:
         )
     if settings.google_api_key:
         return GeminiToolNamer(api_key=settings.google_api_key, model=settings.gemini_label_model)
+    if settings.ollama_base_url:
+        return OllamaToolNamer(settings.ollama_base_url, settings.ollama_label_model)
     return None
 
 
@@ -152,4 +181,8 @@ def tool_naming_available() -> bool:
     """True when the server can name tools without a user-supplied key."""
     from app.config import settings
 
-    return bool(settings.google_api_key or settings.openrouter_api_key)
+    return bool(
+        settings.google_api_key
+        or settings.openrouter_api_key
+        or settings.ollama_base_url
+    )
