@@ -1,6 +1,7 @@
 import type { BinDefaults, PaperSize } from '@/types'
 import { DEFAULT_PAPER_SIZE } from '@/lib/paper'
 import type { SnapMode } from './constants'
+import { DEFAULT_SLICER, type SlicerId } from './slicers'
 
 export interface UserSettings {
   bedSize: number
@@ -8,6 +9,7 @@ export interface UserSettings {
   snapMode: SnapMode
   autoArrange: boolean
   arrangeRotation: boolean
+  slicer: SlicerId
   binDefaults?: Partial<BinDefaults>
 }
 
@@ -17,6 +19,7 @@ const DEFAULTS: UserSettings = {
   snapMode: 'fixed-5',
   autoArrange: false,
   arrangeRotation: true,
+  slicer: DEFAULT_SLICER,
 }
 const KEY = 'tracefinity-settings'
 

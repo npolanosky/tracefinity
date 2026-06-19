@@ -9,8 +9,9 @@ import { ToolBrowser } from '@/components/ToolBrowser'
 import { getBin, updateBin, generateBinStl, getBinStlUrl, getBinZipUrl, getBinThreemfUrl, getBinInsertUrl, getImageUrl, listTools, updateTool } from '@/lib/api'
 import { getDefaultBinConfig, resetDefaultBinConfig, saveDefaultBinConfig } from '@/lib/binDefaults'
 import { getSettings, saveSettings } from '@/lib/settings'
+import { slicerUrl, slicerLabel, absoluteUrl } from '@/lib/slicers'
 import type { BinConfig, BinData, PlacedTool, TextLabel } from '@/types'
-import { Download, Loader2, Package, ChevronDown, Check, LayoutGrid, RotateCw, Sparkles } from 'lucide-react'
+import { Download, Loader2, Package, ChevronDown, Check, LayoutGrid, RotateCw, Sparkles, Send } from 'lucide-react'
 import { arrangeTools, type ToolPadInfo } from '@/lib/packing'
 import { Breadcrumb } from '@/components/Breadcrumb'
 import { Alert } from '@/components/Alert'
@@ -70,6 +71,7 @@ export default function BinPage() {
   const [autoSize, setAutoSize] = useState(true)
   const [isDragging, setIsDragging] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const [slicerName, setSlicerName] = useState('slicer')
   const [defaultsStatus, setDefaultsStatus] = useState<string | null>(null)
   const defaultsStatusTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [snapMode, setSnapModeState] = useState<SnapMode>('fixed-5')
@@ -403,6 +405,16 @@ export default function BinPage() {
     window.open(getBinInsertUrl(binId), '_blank')
   }
 
+  useEffect(() => { setSlicerName(slicerLabel(getSettings().slicer)) }, [])
+
+  function handleSendToSlicer() {
+    // prefer 3MF (richer), fall back to the single STL; send an absolute URL the
+    // slicer can fetch from this same host.
+    const path = threemfUrl ? getBinThreemfUrl(binId) : stlUrl ? getBinStlUrl(binId) : null
+    if (!path) return
+    window.location.href = slicerUrl(getSettings().slicer, absoluteUrl(path))
+  }
+
   function showDefaultsStatus(message: string) {
     if (defaultsStatusTimeoutRef.current) clearTimeout(defaultsStatusTimeoutRef.current)
     setDefaultsStatus(message)
@@ -526,6 +538,19 @@ export default function BinPage() {
               </button>
               {exportOpen && (
                 <div className="absolute bottom-full left-0 right-0 mb-1.5 bg-surface border border-border rounded-lg py-1 z-30 shadow-xl">
+                  {(threemfUrl || stlUrl) && (
+                    <>
+                      <button
+                        onClick={() => { handleSendToSlicer(); setExportOpen(false) }}
+                        className="w-full text-left px-3 py-1.5 text-[11px] text-accent hover:bg-glass-hover transition-colors cursor-pointer flex items-center gap-2"
+                        title="Open the generated file in your preferred slicer on this computer"
+                      >
+                        <Send className="w-3 h-3" />
+                        Send to {slicerName}
+                      </button>
+                      <div className="my-1 border-t border-border" />
+                    </>
+                  )}
                   {stlUrl && (
                     <button
                       onClick={() => { handleDownload(); setExportOpen(false) }}
