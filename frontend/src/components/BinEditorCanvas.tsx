@@ -123,9 +123,9 @@ export function BinEditorCanvas({
           viewBox={`-10 -10 ${displayWidth + 70} ${displayHeight + 30}`}
           preserveAspectRatio="xMidYMid meet"
           className={`rounded max-w-full max-h-full ${activeTool === 'select' ? 'cursor-default' : 'cursor-crosshair'}`}
-          style={{ overflow: 'visible' }}
+          style={{ overflow: 'visible', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' }}
           onClick={handleBackgroundClick}
-          onMouseDown={handleCanvasMouseDown}
+          onPointerDown={handleCanvasMouseDown}
         >
           <rect x="0" y="0" width={displayWidth} height={displayHeight} fill="rgb(30, 41, 59)" rx="4" />
           {Array.from({ length: gridX + 1 }).map((_, i) => (
@@ -201,7 +201,7 @@ export function BinEditorCanvas({
                   stroke={isSelected ? 'rgb(148, 163, 184)' : 'rgb(100, 116, 139)'}
                   strokeWidth={handleStroke}
                   className={activeTool === 'text' ? 'cursor-crosshair' : 'cursor-move'}
-                  onMouseDown={handleToolMouseDown(tool.id)}
+                  onPointerDown={handleToolMouseDown(tool.id)}
                   onClick={stopClickUnlessText}
                 />
 
@@ -233,7 +233,7 @@ export function BinEditorCanvas({
                   width={hitW} height={hitH}
                   fill="transparent"
                   className="cursor-move"
-                  onMouseDown={handleLabelMouseDown(label.id)}
+                  onPointerDown={handleLabelMouseDown(label.id)}
                   onDoubleClick={handleLabelDoubleClick(label.id)}
                   onClick={stopClick}
                 />
@@ -324,7 +324,7 @@ export function BinEditorCanvas({
                         width={cornerSize} height={cornerSize}
                         fill="transparent"
                         className="cursor-rotate"
-                        onMouseDown={handleRotateMouseDown(tool.id)}
+                        onPointerDown={handleRotateMouseDown(tool.id)}
                         onClick={stopClick}
                       />
                     </g>
@@ -381,7 +381,7 @@ export function BinEditorCanvas({
                         width={cornerSize} height={cornerSize}
                         fill="transparent"
                         className="cursor-rotate"
-                        onMouseDown={handleLabelRotateMouseDown(label.id)}
+                        onPointerDown={handleLabelRotateMouseDown(label.id)}
                         onClick={stopClick}
                       />
                     </g>

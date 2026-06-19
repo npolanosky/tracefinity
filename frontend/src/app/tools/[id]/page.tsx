@@ -27,7 +27,7 @@ export default function ToolPage() {
   const [name, setName] = useState('')
   const [autoRotating, setAutoRotating] = useState(false)
   const [showSourceImage, setShowSourceImage] = useState(false)
-  const [sourceImageOpacity, setSourceImageOpacity] = useState(0.45)
+  const [sourceImageOpacity, setSourceImageOpacity] = useState(0.6)
   const [materializeError, setMaterializeError] = useState<string | null>(null)
 
   const sourceImageContext = useMemo(
@@ -217,9 +217,9 @@ export default function ToolPage() {
   const isParametric = tool.shapes != null
 
   return (
-    <div className={`h-[calc(100dvh-44px)] relative overflow-hidden${photoActive ? ' editor-photo-active' : ''}`}>
-      {/* floating breadcrumb panel */}
-      <div className="absolute top-3.5 left-3.5 z-20 glass-toolbar px-3 py-1.5 flex items-center gap-3">
+    <div className={`h-[calc(100dvh-44px)] flex flex-col lg:block lg:relative overflow-hidden${photoActive ? ' editor-photo-active' : ''}`}>
+      {/* breadcrumb: an in-flow top bar on mobile, a floating panel on desktop */}
+      <div className="flex-shrink-0 order-1 m-2 lg:m-0 lg:absolute lg:top-3.5 lg:left-3.5 z-20 glass-toolbar px-3 py-1.5 flex flex-wrap items-center gap-3">
         <Breadcrumb segments={[
           { label: projectSource.rootLabel, href: projectSource.rootHref },
           { label: name || 'Untitled', editable: true, onEdit: (v) => setName(v) },
@@ -267,7 +267,8 @@ export default function ToolPage() {
         </div>
       </div>
 
-      {/* editor fills the entire area */}
+      {/* editor: fills the space below the breadcrumb on mobile, the whole area on desktop */}
+      <div className="order-2 flex-1 min-h-0 relative lg:static lg:h-full">
       {isParametric ? (
         <ShapeDesigner
           shapes={tool.shapes!}
@@ -303,6 +304,7 @@ export default function ToolPage() {
           autoRotating={autoRotating}
         />
       )}
+      </div>
     </div>
   )
 }
