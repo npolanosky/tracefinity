@@ -378,7 +378,7 @@ export default function TracePage() {
     : (step === 'corners' ? 0 : step === 'trace' ? 1 : 2)
 
   return (
-    <div className="h-[calc(100vh-44px)] flex flex-col w-full">
+    <div className="h-[calc(100dvh-44px)] flex flex-col w-full">
       <StepBar
         steps={steps}
         current={stepIndex}
@@ -387,9 +387,9 @@ export default function TracePage() {
           else if (!singleTracer && i === 1 && correctedImageUrl) setStep('trace')
         }}
       />
-      <div className="flex-1 flex flex-col md:flex-row min-h-0">
-      {/* left sidebar - controls */}
-      <div className="md:w-[240px] md:flex-shrink-0 bg-surface border-b md:border-b-0 md:border-r border-border overflow-y-auto flex flex-col max-h-[40vh] md:max-h-none">
+      <div className="flex-1 flex flex-col-reverse md:flex-row min-h-0">
+      {/* left sidebar - controls (below the canvas on mobile, left column on desktop) */}
+      <div className="md:w-[240px] md:flex-shrink-0 bg-surface border-t md:border-t-0 md:border-r border-border overflow-y-auto flex flex-col max-h-[55vh] md:max-h-none">
         <div className="p-3 space-y-3">
           <div className="glass rounded-[10px] px-3 py-3">
             <h3 className="text-[10px] font-semibold text-text-muted uppercase tracking-widest mb-2">
@@ -679,7 +679,7 @@ export default function TracePage() {
           {error && <Alert variant="error">{error}</Alert>}
         </div>
 
-        <div className="p-3 md:mt-auto space-y-2">
+        <div className="p-3 space-y-2 sticky bottom-0 bg-surface border-t border-border md:static md:border-t-0 md:mt-auto">
           {step === 'corners' && (
             <button
               onClick={handleCornersSubmit}
