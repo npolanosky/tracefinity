@@ -7,7 +7,7 @@
 - `POST /api/sessions/{id}/trace` - AI trace tool outlines
 - `POST /api/sessions/{id}/trace-mask` - trace from uploaded mask
 - `PUT /api/sessions/{id}/polygons` - save polygon edits
-- `POST /api/sessions/{id}/name-tools` - optionally auto-name traced polygons from their crops (synchronous, best-effort; needs a Gemini/OpenRouter key)
+- `POST /api/sessions/{id}/name-tools` - optionally auto-name traced polygons from their crops (synchronous, best-effort; needs a Gemini/OpenRouter key or a local Ollama vision model)
 - `POST /api/sessions/{id}/save-tools` - convert traced polygons to library tools
 - `GET /api/sessions` - list sessions
 - `GET /api/sessions/{id}` - get session state

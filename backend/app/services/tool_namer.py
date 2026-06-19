@@ -31,16 +31,20 @@ NAME_PROMPT = (
     '"needle nose pliers"). If you cannot tell, reply "tool".'
 )
 
-# Small local vision models (llava, moondream, ...) treat an explicit
-# "reply 'tool' if unsure" escape hatch as a free pass and return the generic
-# word instead of committing. This variant removes the easy-out and forces a
-# concrete single guess, which yields far more useful names from weak models.
+# Local vision models treat an explicit "reply 'tool' if unsure" escape hatch
+# as a free pass and return the generic word instead of committing. This prompt
+# removes the easy-out, pushes for the most specific name the image supports,
+# and lets the model use a legible brand name when it sharpens the name.
 LOCAL_NAME_PROMPT = (
-    "What hand tool is shown in this photo? Identify it as specifically as you "
-    "can. Reply with ONLY its common name in 1-3 lowercase words (for example: "
-    "wrench, phillips screwdriver, needle nose pliers, ball peen hammer, "
-    "socket wrench, tape measure). Always give your single best guess even if "
-    "you are unsure. Output only the name, nothing else."
+    "Identify the single tool in this photo as specifically as the image "
+    "allows. Name its type and any distinguishing variant you can see -- "
+    "drive size, head type, jaw shape, etc. (e.g. phillips screwdriver, "
+    "10mm combination wrench, needle nose pliers, ball peen hammer, "
+    "digital caliper, cordless impact driver). If a brand or model name is "
+    "clearly legible on the tool and makes the name more useful, include it "
+    "(e.g. knipex pliers, dewalt impact driver). "
+    "Reply with ONLY the name: 2 to 4 lowercase words, no punctuation or "
+    "quotes. Always give your single best guess. Output only the name."
 )
 
 

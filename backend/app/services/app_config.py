@@ -28,7 +28,7 @@ SECRET_FIELDS = {"google_api_key", "openrouter_api_key"}
 # config field -> Settings attribute used as the env fallback
 _ENV_FALLBACK = {f: f for f in FIELDS}
 _DEFAULTS = {
-    "ollama_label_model": "llava",
+    "ollama_label_model": "qwen2.5vl:7b",
     "gemini_label_model": "gemini-2.0-flash",
 }
 
