@@ -153,3 +153,33 @@ class TestOllamaToolNamer:
         _ollama_mock_client(monkeypatch, handler)
         namer = OllamaToolNamer("http://x:11434", "llava")
         assert asyncio.run(namer.name(b"img")) is None
+
+    def test_warm_posts_generate_without_prompt(self, monkeypatch):
+        import httpx
+
+        seen = {}
+
+        def handler(request):
+            import json
+            seen["path"] = request.url.path
+            seen["body"] = json.loads(request.content)
+            return httpx.Response(200, json={"done": True})
+
+        _ollama_mock_client(monkeypatch, handler)
+        namer = OllamaToolNamer("http://x:11434", "qwen2.5vl:7b")
+        asyncio.run(namer.warm())
+        assert seen["path"] == "/api/generate"
+        assert seen["body"]["model"] == "qwen2.5vl:7b"
+        assert "prompt" not in seen["body"]  # load only, no inference
+        assert "keep_alive" in seen["body"]
+
+    def test_warm_swallows_errors(self, monkeypatch):
+        import httpx
+
+        def handler(request):
+            raise httpx.ConnectError("no route to host")
+
+        _ollama_mock_client(monkeypatch, handler)
+        namer = OllamaToolNamer("http://x:11434", "qwen2.5vl:7b")
+        # must not raise
+        asyncio.run(namer.warm())
