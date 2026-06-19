@@ -310,7 +310,7 @@ export function PolygonEditor({
     <div className="flex flex-col gap-3 h-full min-h-0">
       {/* toolbar */}
       {editable && (
-        <div className="flex items-center gap-4 flex-shrink-0">
+        <div className="flex flex-wrap items-center gap-2 md:gap-4 flex-shrink-0">
           <div className="flex gap-1 bg-elevated rounded-[10px] p-1 border border-border">
             <button
               onClick={() => handleModeChange('vertex')}
@@ -386,7 +386,7 @@ export function PolygonEditor({
             </>
           )}
 
-          <span className="text-sm text-text-muted">
+          <span className="hidden sm:inline text-sm text-text-muted">
             {(editMode === 'select' || editMode === 'vertex') && !activeId && 'Click outlines to select tools'}
             {(editMode === 'select' || editMode === 'vertex') && activeId && 'Drag vertices to adjust the outline · Shift locks to an axis'}
             {editMode === 'add-vertex' && 'Click on an edge to add a vertex'}

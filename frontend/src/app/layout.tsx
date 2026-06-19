@@ -29,6 +29,7 @@ export default function RootLayout({
       <head>
         <title>Tracefinity</title>
         <meta name="description" content="Generate gridfinity bins from photos of tools" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
       </head>
       <body className="bg-base text-text-primary min-h-screen">

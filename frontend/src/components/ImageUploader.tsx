@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Upload } from 'lucide-react'
+import { Upload, Camera } from 'lucide-react'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 
 function UploadIllustration({ reduceMotion }: { reduceMotion: boolean }) {
@@ -157,10 +157,21 @@ interface Props {
 
 export function ImageUploader({ onUpload, disabled }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const cameraRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
   const reduceMotion = useReducedMotion()
 
   function handleClick() {
+    if (!disabled) inputRef.current?.click()
+  }
+
+  function handleCameraClick(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!disabled) cameraRef.current?.click()
+  }
+
+  function handleUploadClick(e: React.MouseEvent) {
+    e.stopPropagation()
     if (!disabled) inputRef.current?.click()
   }
 
@@ -201,6 +212,7 @@ export function ImageUploader({ onUpload, disabled }: Props) {
       `}
     >
       <input ref={inputRef} type="file" accept="image/*" onChange={handleChange} className="hidden" />
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={handleChange} className="hidden" />
       {isDragging ? (
         <div className="py-4 text-center">
           <div className="w-10 h-10 mx-auto mb-3 rounded-full bg-accent-muted flex items-center justify-center">
@@ -210,7 +222,7 @@ export function ImageUploader({ onUpload, disabled }: Props) {
         </div>
       ) : (
         <div className="flex flex-col sm:flex-row items-center gap-6 sm:gap-10">
-          <div className="w-72 h-44 flex-shrink-0">
+          <div className="w-full max-w-[18rem] h-44 flex-shrink-0">
             <UploadIllustration reduceMotion={reduceMotion} />
           </div>
           <div className="text-center sm:text-left flex-1">
@@ -235,10 +247,26 @@ export function ImageUploader({ onUpload, disabled }: Props) {
                 Take a top-down photo
               </li>
             </ul>
-            <span className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-accent text-white text-sm font-semibold shadow-lg shadow-accent/20">
-              <Upload className="w-4 h-4" />
-              Upload photo
-            </span>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 justify-center sm:justify-start">
+              <button
+                type="button"
+                onClick={handleCameraClick}
+                disabled={disabled}
+                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-accent text-white text-sm font-semibold shadow-lg shadow-accent/20 disabled:opacity-50"
+              >
+                <Camera className="w-4 h-4" />
+                Take photo
+              </button>
+              <button
+                type="button"
+                onClick={handleUploadClick}
+                disabled={disabled}
+                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full glass text-text-primary text-sm font-semibold disabled:opacity-50"
+              >
+                <Upload className="w-4 h-4" />
+                Upload photo
+              </button>
+            </div>
           </div>
         </div>
       )}
