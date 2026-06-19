@@ -125,6 +125,22 @@ export async function getAvailableKeys(): Promise<{ google: boolean; tool_naming
   return fetchApi('/api/api-keys')
 }
 
+export interface AppConfig {
+  google_api_key_configured: boolean
+  openrouter_api_key_configured: boolean
+  ollama_base_url: string | null
+  ollama_label_model: string | null
+  gemini_label_model: string | null
+}
+
+export async function getConfig(): Promise<AppConfig> {
+  return fetchApi('/api/config')
+}
+
+export async function updateConfig(patch: Partial<Record<keyof AppConfig | 'google_api_key' | 'openrouter_api_key', string>>): Promise<void> {
+  await fetchApi('/api/config', { method: 'PUT', body: JSON.stringify(patch) })
+}
+
 export async function nameTools(
   sessionId: string,
   polygonIds?: string[],

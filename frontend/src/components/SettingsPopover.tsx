@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import Link from 'next/link'
 import { Settings } from 'lucide-react'
 import { getSettings, saveSettings } from '@/lib/settings'
 import { PAPER_SIZE_OPTIONS, DEFAULT_PAPER_SIZE } from '@/lib/paper'
@@ -136,6 +137,16 @@ export function SettingsPopover() {
               Used by &ldquo;Send to slicer&rdquo; on the bin export menu. Opens the
               slicer on this computer with the generated file.
             </p>
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-border">
+            <Link
+              href="/settings"
+              onClick={() => setOpen(false)}
+              className="text-xs text-accent hover:underline"
+            >
+              AI keys &amp; all settings →
+            </Link>
           </div>
         </div>
       )}
