@@ -166,9 +166,23 @@ class AITracer:
         if name in REMBG_MODELS:
             from rembg import new_session
             from app.services.ort_runtime import get_onnx_providers
-            providers = get_onnx_providers(require_gpu=name in GPU_REQUIRED_TRACERS)
+            gpu_required = name in GPU_REQUIRED_TRACERS
+            providers = get_onnx_providers(require_gpu=gpu_required)
             logging.info("loading %s via rembg with providers: %s", label, providers)
-            session = new_session(REMBG_MODELS[name], providers=providers)
+            try:
+                session = new_session(REMBG_MODELS[name], providers=providers)
+            except Exception:
+                # A GPU session can fail to instantiate even when CUDA is
+                # advertised (driver/cuDNN/op mismatch). GPU-required tracers
+                # must surface that; everything else degrades to CPU so the
+                # tracer still works instead of silently dropping out.
+                if gpu_required or providers == ["CPUExecutionProvider"]:
+                    raise
+                logging.warning(
+                    "%s failed to load on %s; falling back to CPU", label, providers,
+                    exc_info=True,
+                )
+                session = new_session(REMBG_MODELS[name], providers=["CPUExecutionProvider"])
             logging.info("%s actual ONNX providers: %s", label, session.inner_session.get_providers())
             self._saliency_backend = ("rembg", session)
         elif name == "inspyrenet":
