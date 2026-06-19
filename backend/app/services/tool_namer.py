@@ -28,6 +28,9 @@ REQUEST_TIMEOUT = 30
 # request -- a 30s cap there surfaces as an empty-message ReadTimeout. give
 # Ollama a generous ceiling (override with OLLAMA_TIMEOUT).
 OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "180"))
+# how long Ollama keeps the model resident after a request -- long enough to
+# span a warm-load-on-upload through the trace flow to the first naming call.
+OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "10m")
 
 NAME_PROMPT = (
     "This image shows a single hand tool on a plain background. "
@@ -176,6 +179,7 @@ class OllamaToolNamer:
                     "messages": [{"role": "user", "content": LOCAL_NAME_PROMPT, "images": [b64]}],
                     "stream": False,
                     "options": options,
+                    "keep_alive": OLLAMA_KEEP_ALIVE,
                 })
                 if resp.status_code >= 400:
                     logger.warning(
@@ -188,6 +192,7 @@ class OllamaToolNamer:
                         "images": [b64],
                         "stream": False,
                         "options": options,
+                        "keep_alive": OLLAMA_KEEP_ALIVE,
                     })
                 if resp.status_code >= 400:
                     logger.warning(
@@ -211,6 +216,40 @@ class OllamaToolNamer:
                 type(e).__name__, e, self.base_url, self.model, OLLAMA_TIMEOUT,
             )
             return None
+
+    async def warm(self) -> None:
+        """Best-effort: tell Ollama to load the model into memory now.
+
+        A /api/generate call with no prompt loads (and keeps alive) the model
+        without running inference, so the first real naming request -- fired
+        after the user finishes tracing -- isn't blocked on a multi-GB cold
+        load. Fire-and-forget: failures are logged at info and never raised."""
+        import httpx
+
+        try:
+            async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
+                await client.post(f"{self.base_url}/api/generate", json={
+                    "model": self.model,
+                    "keep_alive": OLLAMA_KEEP_ALIVE,
+                })
+            logger.info("ollama warm-load requested (model=%r)", self.model)
+        except Exception as e:
+            logger.info("ollama warm-load skipped (%s): %s", type(e).__name__, e)
+
+
+async def warm_tool_namer() -> None:
+    """Preload the naming model if the configured backend supports it.
+
+    Called fire-and-forget on upload so a local Ollama model loads during
+    paper detection + tracing. No-op for cloud namers (Gemini/OpenRouter),
+    which need no warming, and when no backend is configured."""
+    try:
+        namer = get_tool_namer()
+        warm = getattr(namer, "warm", None)
+        if warm is not None:
+            await warm()
+    except Exception as e:  # never let a warm-up failure surface
+        logger.info("tool namer warm-up skipped (%s): %s", type(e).__name__, e)
 
 
 def get_tool_namer(api_key: Optional[str] = None) -> Optional[ToolNamer]:

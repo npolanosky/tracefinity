@@ -85,7 +85,7 @@ from app.services.project_store import ProjectStore
 from app.services.bin_service import sync_placed_tools, resolve_clearance, placed_levels
 from app.services.image_service import generate_tool_thumbnail, crop_polygon_png, tool_crop_png
 from app.services import shape_compiler
-from app.services.tool_namer import get_tool_namer, tool_naming_available
+from app.services.tool_namer import get_tool_namer, tool_naming_available, warm_tool_namer
 from app.services.tracer_registry import TRACER_LABELS, tracer_kind, validate_tracer_ids
 from app.services.geometry import optimal_rotation_angle as _optimal_rotation_angle
 from app.services.project_service import (
@@ -101,6 +101,17 @@ from app.services.project_service import (
     repair_project_links,
 )
 router = APIRouter()
+
+# strong refs to fire-and-forget background tasks so the event loop doesn't GC
+# them mid-flight (e.g. the on-upload Ollama warm-load)
+_bg_tasks: set = set()
+
+
+def _spawn_bg(coro) -> None:
+    task = asyncio.create_task(coro)
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
+
 
 # Heuristic mismatch score combining a label penalty with bbox and point deltas measured in mm.
 SOURCE_POLYGON_MATCH_MAX_SCORE = 80.0
@@ -585,6 +596,10 @@ async def upload_image(request: Request, image: UploadFile, user_id: str = Depen
         original_image_path=_rel(image_path, up),
         corners=corner_points,
     ))
+
+    # warm the local naming model now so it's resident by the time the user
+    # finishes tracing and hits auto-name (no-op for cloud namers / no backend)
+    _spawn_bg(warm_tool_namer())
 
     return UploadResponse(
         session_id=session_id,
