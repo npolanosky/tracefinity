@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     # GPU model lifecycle: local tracer + paper-detector models load on demand
     # and are freed after this many seconds idle so the GPU can be shared (0
     # disables idle unloading). max_concurrency caps simultaneous GPU inference.
-    gpu_idle_timeout: int = 300
+    gpu_idle_timeout: int = 60
     gpu_max_concurrency: int = 1
     max_upload_mb: int = 20
     log_level: str = "INFO"
