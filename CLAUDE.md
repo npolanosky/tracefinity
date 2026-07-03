@@ -43,7 +43,7 @@ make dev  # starts backend (:8000) and frontend (:4001) concurrently
 
 Configurable via `GEMINI_IMAGE_MODEL` env var. Defaults to `gemini-3.1-flash-image-preview` locally, `gemini-3-pro-image-preview` in Docker. Also supports `gemini-2.5-flash-image` (faster, needs alignment).
 
-Two models run at all times: U2-Net Portable for paper detection and the configured tracer for tool tracing. Both load at startup. RAM figures are combined (tested in Linux containers).
+Two models back the pipeline: U2-Net Portable for paper detection and the configured tracer for tool tracing. They are managed by the GPU pool (`app/services/gpu_pool.py`): registered at startup but loaded lazily on first use and freed by a background reaper after `gpu_idle_timeout` seconds idle (default 300, 0 disables), so an idle app holds no (V)RAM and can share the GPU with e.g. a local Ollama. `gpu_max_concurrency` (default 1) serialises GPU inference. `GET /api/gpu-status` reports what's resident. RAM figures are combined (tested in Linux containers).
 
 Tracers (configurable via `TRACERS` env var):
 - `isnet` (default) -- IS-Net, good quality, ~0.8s/image, min 2GB

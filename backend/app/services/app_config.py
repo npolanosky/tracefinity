@@ -24,6 +24,8 @@ FIELDS = [
     "ollama_label_model",
     "ollama_keep_alive",
     "gemini_label_model",
+    "gpu_idle_timeout",
+    "gpu_max_concurrency",
 ]
 SECRET_FIELDS = {"google_api_key", "openrouter_api_key"}
 # config field -> Settings attribute used as the env fallback
@@ -32,6 +34,8 @@ _DEFAULTS = {
     "ollama_label_model": "qwen2.5vl:7b",
     "ollama_keep_alive": "5m",
     "gemini_label_model": "gemini-2.0-flash",
+    "gpu_idle_timeout": 300,
+    "gpu_max_concurrency": 1,
 }
 
 

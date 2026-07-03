@@ -42,6 +42,13 @@ def _configure_uvicorn_logging():
             h.setFormatter(fmt)
 
 
+@app.on_event("startup")
+def _start_gpu_reaper():
+    """free idle GPU models in the background so VRAM can be shared."""
+    from app.services.gpu_pool import gpu_pool
+    gpu_pool.start_reaper()
+
+
 class ProxySecretMiddleware(BaseHTTPMiddleware):
     """reject requests with X-User-Id but wrong/missing proxy secret"""
 
