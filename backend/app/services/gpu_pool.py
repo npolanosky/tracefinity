@@ -26,9 +26,9 @@ from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_IDLE_TIMEOUT = 300.0  # seconds
+DEFAULT_IDLE_TIMEOUT = 60.0  # seconds -- free VRAM promptly once idle
 DEFAULT_CONCURRENCY = 1
-REAP_INTERVAL = 30.0  # seconds between idle sweeps
+REAP_INTERVAL = 10.0  # seconds between idle sweeps (keeps unload prompt)
 
 
 def _cfg(field: str, fallback: float) -> float:

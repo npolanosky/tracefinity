@@ -161,7 +161,7 @@ export default function SettingsPage() {
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="GPU idle unload (seconds)" hint="Free the local tracer + paper-detector models after this many seconds idle so the GPU can be shared. 0 = never unload.">
-            <input type="text" className={inputCls} placeholder="300" value={gpuIdleTimeout} onChange={(e) => setGpuIdleTimeout(e.target.value)} />
+            <input type="text" className={inputCls} placeholder="60" value={gpuIdleTimeout} onChange={(e) => setGpuIdleTimeout(e.target.value)} />
           </Field>
           <Field label="GPU max concurrency" hint="Simultaneous GPU inferences. 1 queues them to cap peak VRAM (restart to apply).">
             <input type="text" className={inputCls} placeholder="1" value={gpuMaxConcurrency} onChange={(e) => setGpuMaxConcurrency(e.target.value)} />

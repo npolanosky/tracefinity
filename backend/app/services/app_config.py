@@ -34,7 +34,7 @@ _DEFAULTS = {
     "ollama_label_model": "qwen2.5vl:7b",
     "ollama_keep_alive": "5m",
     "gemini_label_model": "gemini-2.0-flash",
-    "gpu_idle_timeout": 300,
+    "gpu_idle_timeout": 60,
     "gpu_max_concurrency": 1,
 }
 
