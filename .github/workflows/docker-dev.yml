@@ -1,8 +1,17 @@
-name: Build Dev Image
+name: Build Main Image
+
+# Builds the promoted image from main and pushes it to GHCR as :latest.
+# (The dev branch publishes :dev via docker-fork.yml.) amd64 only -- the
+# Dockerfile installs onnxruntime-gpu[cuda,cudnn], whose wheels are x86_64-only.
+#
+# Failure behaviour: GitHub Actions does not auto-retry a failed run; each push
+# runs once. cancel-in-progress stops an outdated run when a newer commit lands
+# (no pile-ups), and timeout-minutes caps a hung build so it can't run for ages.
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -15,6 +24,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     permissions:
       contents: read
       packages: write
@@ -38,16 +48,13 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=dev
-            type=sha,prefix=dev-
+            type=raw,value=latest
+            type=sha,prefix=main-
 
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
-          # amd64 only: the Dockerfile installs onnxruntime-gpu[cuda,cudnn],
-          # whose wheels are x86_64-only, so the arm64 leg fails at that pip
-          # step. Deploy targets are amd64 NVIDIA GPU hosts.
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
