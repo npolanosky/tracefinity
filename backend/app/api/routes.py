@@ -86,7 +86,7 @@ from app.services.bin_service import sync_placed_tools, resolve_clearance, place
 from app.services.image_service import generate_tool_thumbnail, crop_polygon_png, tool_crop_png
 from app.services import shape_compiler
 from app.services.tool_namer import get_tool_namer, tool_naming_available, warm_tool_namer
-from app.services.tracer_registry import TRACER_LABELS, tracer_kind, validate_tracer_ids
+from app.services.tracer_registry import TRACER_LABELS, tracer_kind, validate_tracer_ids, effective_available_tracers
 from app.services.geometry import optimal_rotation_angle as _optimal_rotation_angle
 from app.services.project_service import (
     add_bin_to_project,
@@ -203,7 +203,7 @@ def _remote_token(tracer_id: str) -> str | None:
 
 def _get_tracer(tracer_id: str | None = None) -> AITracer:
     """get or create a tracer for the given ID."""
-    tid = tracer_id or settings.available_tracers[0]
+    tid = tracer_id or effective_available_tracers()[0]
     if tid not in _tracers:
         kind = tracer_kind(tid)
         if kind == "gemini":
@@ -226,10 +226,12 @@ def _get_tracer(tracer_id: str | None = None) -> AITracer:
             _tracers[tid] = AITracer(saliency_tracer=tid)
     return _tracers[tid]
 
-# pre-load all configured tracers at startup, reporting per-tracer phase
-_pending = list(settings.available_tracers)
-for _tid in settings.available_tracers:
-    _set_boot_phase(f"loading {_tid}", current=_tid, pending=_pending)
+# register all configured tracers at startup (lazy: the GPU pool loads weights
+# on first use, not here), reporting per-tracer phase
+_boot_tracers = effective_available_tracers()
+_pending = list(_boot_tracers)
+for _tid in _boot_tracers:
+    _set_boot_phase(f"registering {_tid}", current=_tid, pending=_pending)
     _get_tracer(_tid)
     _BOOT_LOADED.append(_tid)
     _pending = _pending[1:]
@@ -685,7 +687,12 @@ async def gpu_status(request: Request):
 async def get_config(request: Request):
     """effective server config (secrets masked to a configured flag)."""
     from app.services.app_config import app_config
-    return app_config.public()
+    from app.services.tracer_registry import LOCAL_MODEL_LABELS
+    cfg = app_config.public()
+    # the local models the GUI can offer as a tracer selection
+    cfg["supported_tracers"] = [{"id": tid, "label": label} for tid, label in LOCAL_MODEL_LABELS.items()]
+    cfg["active_tracers"] = effective_available_tracers()
+    return cfg
 
 
 @router.put("/config", response_model=StatusResponse)
@@ -700,10 +707,10 @@ async def update_config(request: Request, body: AppConfigUpdate):
 @router.get("/api-keys")
 async def get_available_keys(request: Request):
     """return available tracers and provider info."""
-    tracers = settings.available_tracers
+    tracers = effective_available_tracers()
     has_cloud = bool(settings.google_api_key) or bool(settings.openrouter_api_key)
-    has_saliency = settings.primary_is_saliency
     primary = tracers[0] if tracers else None
+    has_saliency = primary is not None and primary != "gemini"
     return {
         # google: server can trace without a user-supplied key (cloud env key, local, or remote)
         "google": has_cloud or has_saliency,
@@ -725,8 +732,9 @@ async def trace_tools(request: Request, session_id: str, req: TraceRequest, user
     if not session or not session.corrected_image_path:
         raise HTTPException(status_code=400, detail="must set corners first")
 
-    tracer_id = req.tracer or settings.available_tracers[0]
-    if tracer_id not in settings.available_tracers:
+    _tracers = effective_available_tracers()
+    tracer_id = req.tracer or _tracers[0]
+    if tracer_id not in _tracers:
         raise HTTPException(status_code=400, detail=f"tracer '{tracer_id}' not available")
 
     api_key = settings.google_api_key or req.api_key

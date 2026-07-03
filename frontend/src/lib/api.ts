@@ -134,6 +134,11 @@ export interface AppConfig {
   gemini_label_model: string | null
   gpu_idle_timeout: number | string | null
   gpu_max_concurrency: number | string | null
+  tracers: string | null
+  tracer_force_cpu: string | boolean | null
+  gpu_share_with_ollama: string | boolean | null
+  supported_tracers?: { id: string; label: string }[]
+  active_tracers?: string[]
 }
 
 export async function getConfig(): Promise<AppConfig> {

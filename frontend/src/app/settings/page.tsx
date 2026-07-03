@@ -23,6 +23,9 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 const inputCls =
   'w-full h-8 px-2 text-xs bg-elevated border border-border-subtle rounded text-text-primary outline-none focus:border-accent'
 
+const isTrue = (v: string | boolean | null | undefined) =>
+  v === true || ['1', 'true', 'yes', 'on'].includes(String(v).trim().toLowerCase())
+
 export default function SettingsPage() {
   // --- server config (persisted in config.json) ---
   const [config, setConfig] = useState<AppConfig | null>(null)
@@ -34,6 +37,10 @@ export default function SettingsPage() {
   const [geminiModel, setGeminiModel] = useState('')
   const [gpuIdleTimeout, setGpuIdleTimeout] = useState('')
   const [gpuMaxConcurrency, setGpuMaxConcurrency] = useState('')
+  const [selectedTracers, setSelectedTracers] = useState<string[]>([])
+  const [supportedTracers, setSupportedTracers] = useState<{ id: string; label: string }[]>([])
+  const [tracerForceCpu, setTracerForceCpu] = useState(false)
+  const [gpuShareOllama, setGpuShareOllama] = useState(false)
   const [savingAi, setSavingAi] = useState(false)
   const [aiStatus, setAiStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -53,6 +60,10 @@ export default function SettingsPage() {
         setGeminiModel(c.gemini_label_model ?? '')
         setGpuIdleTimeout(c.gpu_idle_timeout != null ? String(c.gpu_idle_timeout) : '')
         setGpuMaxConcurrency(c.gpu_max_concurrency != null ? String(c.gpu_max_concurrency) : '')
+        setSupportedTracers(c.supported_tracers ?? [])
+        setSelectedTracers((c.tracers ?? '').split(',').map((t) => t.trim()).filter(Boolean))
+        setTracerForceCpu(isTrue(c.tracer_force_cpu))
+        setGpuShareOllama(isTrue(c.gpu_share_with_ollama))
       })
       .catch(() => setError('Could not load server config'))
     const s = getSettings()
@@ -72,6 +83,9 @@ export default function SettingsPage() {
       gemini_label_model: geminiModel,
       gpu_idle_timeout: gpuIdleTimeout,
       gpu_max_concurrency: gpuMaxConcurrency,
+      tracers: selectedTracers.join(','),
+      tracer_force_cpu: tracerForceCpu ? 'true' : '',
+      gpu_share_with_ollama: gpuShareOllama ? 'true' : '',
     }
     if (openrouterKey.trim()) patch.openrouter_api_key = openrouterKey.trim()
     if (googleKey.trim()) patch.google_api_key = googleKey.trim()
@@ -159,6 +173,29 @@ export default function SettingsPage() {
           <input type="text" className={inputCls} placeholder="5m" value={ollamaKeepAlive} onChange={(e) => setOllamaKeepAlive(e.target.value)} />
         </Field>
 
+        {supportedTracers.length > 0 && (
+          <Field label="Tracer models" hint="Which local tracers are offered. u2netp is fast/CPU-friendly; birefnet is highest quality. Leave all unchecked to auto-detect (cloud key / remote token / defaults).">
+            <div className="grid grid-cols-2 gap-1.5">
+              {supportedTracers.map((t) => {
+                const on = selectedTracers.includes(t.id)
+                return (
+                  <label key={t.id} className="flex items-center gap-2 text-[11px] text-text-secondary cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      onChange={(e) => setSelectedTracers((prev) =>
+                        e.target.checked ? [...prev, t.id] : prev.filter((x) => x !== t.id)
+                      )}
+                      className="accent-accent"
+                    />
+                    {t.label}
+                  </label>
+                )
+              })}
+            </div>
+          </Field>
+        )}
+
         <div className="grid grid-cols-2 gap-3">
           <Field label="GPU idle unload (seconds)" hint="Free the local tracer + paper-detector models after this many seconds idle so the GPU can be shared. 0 = never unload.">
             <input type="text" className={inputCls} placeholder="60" value={gpuIdleTimeout} onChange={(e) => setGpuIdleTimeout(e.target.value)} />
@@ -167,6 +204,16 @@ export default function SettingsPage() {
             <input type="text" className={inputCls} placeholder="1" value={gpuMaxConcurrency} onChange={(e) => setGpuMaxConcurrency(e.target.value)} />
           </Field>
         </div>
+
+        <label className="flex items-center gap-2 text-[11px] text-text-secondary cursor-pointer">
+          <input type="checkbox" checked={tracerForceCpu} onChange={(e) => setTracerForceCpu(e.target.checked)} className="accent-accent" />
+          Prefer CPU for tracing (run local models on CPU even when a GPU is present — slower, frees VRAM)
+        </label>
+
+        <label className="flex items-center gap-2 text-[11px] text-text-secondary cursor-pointer">
+          <input type="checkbox" checked={gpuShareOllama} onChange={(e) => setGpuShareOllama(e.target.checked)} className="accent-accent" />
+          Share GPU with Ollama (if Ollama is holding a model on the same GPU, run the tracer on CPU instead)
+        </label>
 
         <div className="flex items-center gap-3">
           <button onClick={saveAi} disabled={savingAi} className="btn-primary px-4 py-1.5 text-xs inline-flex items-center gap-1.5">

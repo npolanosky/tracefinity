@@ -172,7 +172,15 @@ class AITracer:
             def _load_rembg():
                 from rembg import new_session
                 from app.services.ort_runtime import get_onnx_providers
-                providers = get_onnx_providers(require_gpu=gpu_required)
+                from app.services.app_config import app_config
+                from app.services.gpu_coordinator import ollama_holds_gpu, truthy
+                force_cpu = truthy(app_config.effective("tracer_force_cpu"))
+                # yield the GPU to Ollama when sharing (never for a GPU-only model)
+                if force_cpu or (not gpu_required and ollama_holds_gpu()):
+                    providers = ["CPUExecutionProvider"]
+                    logging.info("loading %s on CPU (%s)", label, "forced" if force_cpu else "GPU shared with Ollama")
+                else:
+                    providers = get_onnx_providers(require_gpu=gpu_required)
                 logging.info("loading %s via rembg with providers: %s", label, providers)
                 try:
                     session = new_session(REMBG_MODELS[name], providers=providers)
@@ -196,7 +204,16 @@ class AITracer:
             def _load_inspyrenet():
                 from transparent_background import Remover
                 import torch
-                device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+                from app.services.app_config import app_config
+                from app.services.gpu_coordinator import ollama_holds_gpu, truthy
+                if truthy(app_config.effective("tracer_force_cpu")) or ollama_holds_gpu():
+                    device = "cpu"
+                elif torch.cuda.is_available():
+                    device = "cuda"
+                elif torch.backends.mps.is_available():
+                    device = "mps"
+                else:
+                    device = "cpu"
                 logging.info("loading %s on %s", label, device)
                 return Remover(mode="base", device=device)
 

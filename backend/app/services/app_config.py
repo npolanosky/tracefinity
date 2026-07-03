@@ -26,6 +26,9 @@ FIELDS = [
     "gemini_label_model",
     "gpu_idle_timeout",
     "gpu_max_concurrency",
+    "tracers",
+    "tracer_force_cpu",
+    "gpu_share_with_ollama",
 ]
 SECRET_FIELDS = {"google_api_key", "openrouter_api_key"}
 # config field -> Settings attribute used as the env fallback

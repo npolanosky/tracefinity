@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     # disables idle unloading). max_concurrency caps simultaneous GPU inference.
     gpu_idle_timeout: int = 60
     gpu_max_concurrency: int = 1
+    # force local tracers + paper detector onto CPU even when a GPU is present
+    tracer_force_cpu: bool = False
+    # yield the GPU to a co-located Ollama: before loading a tracer on GPU,
+    # check Ollama /api/ps and run on CPU instead if it holds a model
+    gpu_share_with_ollama: bool = False
     max_upload_mb: int = 20
     log_level: str = "INFO"
     proxy_secret: Optional[str] = None

@@ -253,12 +253,19 @@ class StatusResponse(BaseModel):
 
 class AppConfigUpdate(BaseModel):
     # all optional; an explicit "" clears a field (reverts to env/default),
-    # an omitted field is left unchanged
+    # an omitted field is left unchanged. Values are stored as-is and parsed
+    # by their consumers, so numeric/bool settings arrive as strings from the UI.
     google_api_key: str | None = None
     openrouter_api_key: str | None = None
     ollama_base_url: str | None = None
     ollama_label_model: str | None = None
+    ollama_keep_alive: str | None = None
     gemini_label_model: str | None = None
+    gpu_idle_timeout: str | None = None
+    gpu_max_concurrency: str | None = None
+    tracers: str | None = None
+    tracer_force_cpu: str | None = None
+    gpu_share_with_ollama: str | None = None
 
 
 # --- tool library ---

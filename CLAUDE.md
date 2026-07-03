@@ -45,10 +45,11 @@ Configurable via `GEMINI_IMAGE_MODEL` env var. Defaults to `gemini-3.1-flash-ima
 
 Two models back the pipeline: U2-Net Portable for paper detection and the configured tracer for tool tracing. They are managed by the GPU pool (`app/services/gpu_pool.py`): registered at startup but loaded lazily on first use and freed by a background reaper after `gpu_idle_timeout` seconds idle (default 60, 0 disables), so an idle app holds no (V)RAM and can share the GPU with e.g. a local Ollama. `gpu_max_concurrency` (default 1) serialises GPU inference. `GET /api/gpu-status` reports what's resident. RAM figures are combined (tested in Linux containers).
 
-Tracers (configurable via `TRACERS` env var):
+Tracers (configurable via `TRACERS` env var, or per-model checkboxes in Settings which persist to config.json and override the env). `tracer_force_cpu` runs local models on CPU even with a GPU present; `gpu_share_with_ollama` loads a tracer on CPU when a co-located Ollama currently holds the GPU (checks `/api/ps`):
 - `isnet` (default) -- IS-Net, good quality, ~0.8s/image, min 2GB
 - `birefnet-lite` -- BiRefNet Lite, best quality, ~3.6s/image, min 8GB
 - `inspyrenet` -- InSPyReNet, ~2.8s/image, min 6GB
+- `u2netp` -- U2-Net Lite, fast and CPU-friendly (tiny), lower quality; the same model used for paper detection
 
 Remote providers (hosted GPU, swap only the saliency step, all OpenCV stays
 local). Selected via `TRACERS` or auto-detected from a token when no `TRACERS`
