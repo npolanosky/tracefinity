@@ -46,6 +46,7 @@
 
 ## API Keys and tracer status
 - `GET /api-keys` - returns current provider and available tracers
+- `GET /api/gpu-status` - which local GPU models are resident (lazy-loaded, freed when idle), plus `idle_timeout` and `max_concurrency`
 
 Response fields:
 - `google` (bool): true when the server can trace without a user-supplied key (cloud env key, local, or remote).

@@ -132,6 +132,8 @@ export interface AppConfig {
   ollama_label_model: string | null
   ollama_keep_alive: string | null
   gemini_label_model: string | null
+  gpu_idle_timeout: number | string | null
+  gpu_max_concurrency: number | string | null
 }
 
 export async function getConfig(): Promise<AppConfig> {

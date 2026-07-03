@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     # Accepts an Ollama duration ("5m", "300s", "0" = unload immediately,
     # "-1" = keep forever). Default 5m so VRAM frees up a few minutes after use.
     ollama_keep_alive: str = "5m"
+    # GPU model lifecycle: local tracer + paper-detector models load on demand
+    # and are freed after this many seconds idle so the GPU can be shared (0
+    # disables idle unloading). max_concurrency caps simultaneous GPU inference.
+    gpu_idle_timeout: int = 300
+    gpu_max_concurrency: int = 1
     max_upload_mb: int = 20
     log_level: str = "INFO"
     proxy_secret: Optional[str] = None

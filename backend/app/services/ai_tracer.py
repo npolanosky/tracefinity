@@ -147,8 +147,9 @@ class AITracer:
         return polygons, mask_output_path
 
     def _init_saliency_backend(self):
-        """prepare the saliency backend: load local weights, or build a remote
-        config (no heavy import on the remote path)."""
+        """prepare the saliency backend: register the local model with the GPU
+        pool (loaded lazily on first use, freed when idle), or build a remote
+        config (no heavy import on the remote path). No weights load here."""
         if self._saliency_backend is not None:
             return
         name = self.saliency_tracer
@@ -163,35 +164,43 @@ class AITracer:
             )
             self._saliency_backend = (name, cfg)
             return
+        from app.services.gpu_pool import gpu_pool
         label = LOCAL_MODEL_LABELS.get(name, name)
         if name in REMBG_MODELS:
-            from rembg import new_session
-            from app.services.ort_runtime import get_onnx_providers
             gpu_required = name in GPU_REQUIRED_TRACERS
-            providers = get_onnx_providers(require_gpu=gpu_required)
-            logging.info("loading %s via rembg with providers: %s", label, providers)
-            try:
-                session = new_session(REMBG_MODELS[name], providers=providers)
-            except Exception:
-                # A GPU session can fail to instantiate even when CUDA is
-                # advertised (driver/cuDNN/op mismatch). GPU-required tracers
-                # must surface that; everything else degrades to CPU so the
-                # tracer still works instead of silently dropping out.
-                if gpu_required or providers == ["CPUExecutionProvider"]:
-                    raise
-                logging.warning(
-                    "%s failed to load on %s; falling back to CPU", label, providers,
-                    exc_info=True,
-                )
-                session = new_session(REMBG_MODELS[name], providers=["CPUExecutionProvider"])
-            logging.info("%s actual ONNX providers: %s", label, session.inner_session.get_providers())
-            self._saliency_backend = ("rembg", session)
+
+            def _load_rembg():
+                from rembg import new_session
+                from app.services.ort_runtime import get_onnx_providers
+                providers = get_onnx_providers(require_gpu=gpu_required)
+                logging.info("loading %s via rembg with providers: %s", label, providers)
+                try:
+                    session = new_session(REMBG_MODELS[name], providers=providers)
+                except Exception:
+                    # A GPU session can fail to instantiate even when CUDA is
+                    # advertised (driver/cuDNN/op mismatch). GPU-required tracers
+                    # must surface that; everything else degrades to CPU so the
+                    # tracer still works instead of silently dropping out.
+                    if gpu_required or providers == ["CPUExecutionProvider"]:
+                        raise
+                    logging.warning(
+                        "%s failed to load on %s; falling back to CPU", label, providers,
+                        exc_info=True,
+                    )
+                    session = new_session(REMBG_MODELS[name], providers=["CPUExecutionProvider"])
+                logging.info("%s actual ONNX providers: %s", label, session.inner_session.get_providers())
+                return session
+
+            self._saliency_backend = ("rembg", gpu_pool.register(f"tracer:{name}", _load_rembg))
         elif name == "inspyrenet":
-            from transparent_background import Remover
-            import torch
-            device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
-            logging.info("loading %s on %s", label, device)
-            self._saliency_backend = ("inspyrenet", Remover(mode="base", device=device))
+            def _load_inspyrenet():
+                from transparent_background import Remover
+                import torch
+                device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+                logging.info("loading %s on %s", label, device)
+                return Remover(mode="base", device=device)
+
+            self._saliency_backend = ("inspyrenet", gpu_pool.register(f"tracer:{name}", _load_inspyrenet))
         else:
             raise ValueError(f"unsupported saliency model: {name}")
 
@@ -248,7 +257,10 @@ class AITracer:
         if kind == "rembg":
             from rembg import remove
             try:
-                result = remove(pil_img, session=handle)
+                # handle is a gpu_pool ManagedModel: loads on demand, serialised
+                # against other GPU work, and freed by the reaper when idle.
+                with handle.use() as session:
+                    result = remove(pil_img, session=session)
             except Exception:
                 # CUDA inference can fault at run time on large models (OOM /
                 # unsupported op), which session creation didn't catch. Retry
@@ -262,7 +274,9 @@ class AITracer:
             alpha = np.array(result)[:, :, 3]
             _, binary = cv2.threshold(alpha, 127, 255, cv2.THRESH_BINARY)
             return binary
-        result = handle.process(pil_img, type="map")
+        # inspyrenet: handle is a ManagedModel wrapping a transparent_background Remover
+        with handle.use() as remover:
+            result = remover.process(pil_img, type="map")
         mask_np = np.array(result.convert("L"))
         _, binary = cv2.threshold(mask_np, 127, 255, cv2.THRESH_BINARY)
         return binary

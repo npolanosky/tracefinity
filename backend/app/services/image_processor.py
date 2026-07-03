@@ -107,10 +107,17 @@ def pick_paper_orientation(
 
 class ImageProcessor:
     def __init__(self):
-        from rembg import new_session
-        from app.services.ort_runtime import get_onnx_providers
-        logger.info("loading U2-Net Portable for paper detection")
-        self._tool_mask_session = new_session("u2netp", providers=get_onnx_providers())
+        from app.services.gpu_pool import gpu_pool
+
+        def _load():
+            from rembg import new_session
+            from app.services.ort_runtime import get_onnx_providers
+            logger.info("loading U2-Net Portable for paper detection")
+            return new_session("u2netp", providers=get_onnx_providers())
+
+        # registered, not loaded: the session loads on first paper detection and
+        # is freed by the gpu_pool reaper when idle so it doesn't hold VRAM.
+        self._tool_mask_model = gpu_pool.register("u2netp-paper", _load)
 
     def _get_tool_mask(self, image_path: str) -> np.ndarray:
         """get a rough tool mask via U2-Net Portable for paper detection."""
@@ -118,7 +125,8 @@ class ImageProcessor:
         from PIL import Image
 
         img = Image.open(image_path).convert("RGB")
-        result = remove(img, session=self._tool_mask_session)
+        with self._tool_mask_model.use() as session:
+            result = remove(img, session=session)
         alpha = np.array(result)[:, :, 3]
         _, mask = cv2.threshold(alpha, 127, 255, cv2.THRESH_BINARY)
         return mask

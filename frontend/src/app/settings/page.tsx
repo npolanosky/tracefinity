@@ -32,6 +32,8 @@ export default function SettingsPage() {
   const [ollamaModel, setOllamaModel] = useState('')
   const [ollamaKeepAlive, setOllamaKeepAlive] = useState('')
   const [geminiModel, setGeminiModel] = useState('')
+  const [gpuIdleTimeout, setGpuIdleTimeout] = useState('')
+  const [gpuMaxConcurrency, setGpuMaxConcurrency] = useState('')
   const [savingAi, setSavingAi] = useState(false)
   const [aiStatus, setAiStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -49,6 +51,8 @@ export default function SettingsPage() {
         setOllamaModel(c.ollama_label_model ?? '')
         setOllamaKeepAlive(c.ollama_keep_alive ?? '')
         setGeminiModel(c.gemini_label_model ?? '')
+        setGpuIdleTimeout(c.gpu_idle_timeout != null ? String(c.gpu_idle_timeout) : '')
+        setGpuMaxConcurrency(c.gpu_max_concurrency != null ? String(c.gpu_max_concurrency) : '')
       })
       .catch(() => setError('Could not load server config'))
     const s = getSettings()
@@ -66,6 +70,8 @@ export default function SettingsPage() {
       ollama_label_model: ollamaModel,
       ollama_keep_alive: ollamaKeepAlive,
       gemini_label_model: geminiModel,
+      gpu_idle_timeout: gpuIdleTimeout,
+      gpu_max_concurrency: gpuMaxConcurrency,
     }
     if (openrouterKey.trim()) patch.openrouter_api_key = openrouterKey.trim()
     if (googleKey.trim()) patch.google_api_key = googleKey.trim()
@@ -152,6 +158,15 @@ export default function SettingsPage() {
         <Field label="Ollama keep-alive" hint="How long Ollama keeps the naming model in VRAM after use. e.g. 5m, 300s, 0 (unload immediately), -1 (keep forever).">
           <input type="text" className={inputCls} placeholder="5m" value={ollamaKeepAlive} onChange={(e) => setOllamaKeepAlive(e.target.value)} />
         </Field>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="GPU idle unload (seconds)" hint="Free the local tracer + paper-detector models after this many seconds idle so the GPU can be shared. 0 = never unload.">
+            <input type="text" className={inputCls} placeholder="300" value={gpuIdleTimeout} onChange={(e) => setGpuIdleTimeout(e.target.value)} />
+          </Field>
+          <Field label="GPU max concurrency" hint="Simultaneous GPU inferences. 1 queues them to cap peak VRAM (restart to apply).">
+            <input type="text" className={inputCls} placeholder="1" value={gpuMaxConcurrency} onChange={(e) => setGpuMaxConcurrency(e.target.value)} />
+          </Field>
+        </div>
 
         <div className="flex items-center gap-3">
           <button onClick={saveAi} disabled={savingAi} className="btn-primary px-4 py-1.5 text-xs inline-flex items-center gap-1.5">

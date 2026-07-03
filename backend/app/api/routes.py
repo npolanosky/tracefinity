@@ -673,6 +673,14 @@ async def get_version(request: Request):
     return {"version": os.getenv("APP_VERSION", "dev")}
 
 
+@router.get("/gpu-status")
+async def gpu_status(request: Request):
+    """which GPU models are currently resident, plus the idle/concurrency config.
+    Lets the UI/ops confirm VRAM is released when idle."""
+    from app.services.gpu_pool import gpu_pool
+    return gpu_pool.status()
+
+
 @router.get("/config")
 async def get_config(request: Request):
     """effective server config (secrets masked to a configured flag)."""
