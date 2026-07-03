@@ -22,6 +22,7 @@ FIELDS = [
     "openrouter_api_key",
     "ollama_base_url",
     "ollama_label_model",
+    "ollama_keep_alive",
     "gemini_label_model",
 ]
 SECRET_FIELDS = {"google_api_key", "openrouter_api_key"}
@@ -29,6 +30,7 @@ SECRET_FIELDS = {"google_api_key", "openrouter_api_key"}
 _ENV_FALLBACK = {f: f for f in FIELDS}
 _DEFAULTS = {
     "ollama_label_model": "qwen2.5vl:7b",
+    "ollama_keep_alive": "5m",
     "gemini_label_model": "gemini-2.0-flash",
 }
 

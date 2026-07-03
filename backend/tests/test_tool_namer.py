@@ -183,3 +183,30 @@ class TestOllamaToolNamer:
         namer = OllamaToolNamer("http://x:11434", "qwen2.5vl:7b")
         # must not raise
         asyncio.run(namer.warm())
+
+    def test_keep_alive_propagates_to_requests(self, monkeypatch):
+        import json
+        import httpx
+
+        seen = {}
+
+        def handler(request):
+            seen["keep_alive"] = json.loads(request.content).get("keep_alive")
+            return httpx.Response(200, json={"message": {"content": "wrench"}})
+
+        _ollama_mock_client(monkeypatch, handler)
+        namer = OllamaToolNamer("http://x:11434", "qwen2.5vl:7b", keep_alive="90s")
+        asyncio.run(namer.name(b"img"))
+        assert seen["keep_alive"] == "90s"
+
+    def test_get_tool_namer_reads_keep_alive_from_config(self, monkeypatch):
+        from app.services import app_config as app_config_mod
+
+        monkeypatch.setattr(settings, "google_api_key", None)
+        monkeypatch.setattr(settings, "openrouter_api_key", None)
+        monkeypatch.setattr(settings, "ollama_base_url", "http://x:11434")
+        monkeypatch.setattr(settings, "ollama_label_model", "qwen2.5vl:7b")
+        monkeypatch.setattr(app_config_mod.app_config, "_data", {"ollama_keep_alive": "2m"})
+        namer = get_tool_namer()
+        assert isinstance(namer, OllamaToolNamer)
+        assert namer.keep_alive == "2m"

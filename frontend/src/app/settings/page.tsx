@@ -30,6 +30,7 @@ export default function SettingsPage() {
   const [googleKey, setGoogleKey] = useState('')
   const [ollamaUrl, setOllamaUrl] = useState('')
   const [ollamaModel, setOllamaModel] = useState('')
+  const [ollamaKeepAlive, setOllamaKeepAlive] = useState('')
   const [geminiModel, setGeminiModel] = useState('')
   const [savingAi, setSavingAi] = useState(false)
   const [aiStatus, setAiStatus] = useState<string | null>(null)
@@ -46,6 +47,7 @@ export default function SettingsPage() {
         setConfig(c)
         setOllamaUrl(c.ollama_base_url ?? '')
         setOllamaModel(c.ollama_label_model ?? '')
+        setOllamaKeepAlive(c.ollama_keep_alive ?? '')
         setGeminiModel(c.gemini_label_model ?? '')
       })
       .catch(() => setError('Could not load server config'))
@@ -62,6 +64,7 @@ export default function SettingsPage() {
     const patch: Record<string, string> = {
       ollama_base_url: ollamaUrl,
       ollama_label_model: ollamaModel,
+      ollama_keep_alive: ollamaKeepAlive,
       gemini_label_model: geminiModel,
     }
     if (openrouterKey.trim()) patch.openrouter_api_key = openrouterKey.trim()
@@ -142,9 +145,13 @@ export default function SettingsPage() {
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Ollama model"><input type="text" className={inputCls} placeholder="llava" value={ollamaModel} onChange={(e) => setOllamaModel(e.target.value)} /></Field>
+          <Field label="Ollama model"><input type="text" className={inputCls} placeholder="qwen2.5vl:7b" value={ollamaModel} onChange={(e) => setOllamaModel(e.target.value)} /></Field>
           <Field label="Naming model (Gemini/OpenRouter)"><input type="text" className={inputCls} placeholder="gemini-2.0-flash" value={geminiModel} onChange={(e) => setGeminiModel(e.target.value)} /></Field>
         </div>
+
+        <Field label="Ollama keep-alive" hint="How long Ollama keeps the naming model in VRAM after use. e.g. 5m, 300s, 0 (unload immediately), -1 (keep forever).">
+          <input type="text" className={inputCls} placeholder="5m" value={ollamaKeepAlive} onChange={(e) => setOllamaKeepAlive(e.target.value)} />
+        </Field>
 
         <div className="flex items-center gap-3">
           <button onClick={saveAi} disabled={savingAi} className="btn-primary px-4 py-1.5 text-xs inline-flex items-center gap-1.5">

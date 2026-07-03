@@ -30,7 +30,7 @@ REQUEST_TIMEOUT = 30
 OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "180"))
 # how long Ollama keeps the model resident after a request -- long enough to
 # span a warm-load-on-upload through the trace flow to the first naming call.
-OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "10m")
+OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "5m")
 
 NAME_PROMPT = (
     "This image shows a single hand tool on a plain background. "
@@ -152,9 +152,12 @@ class GeminiToolNamer:
 class OllamaToolNamer:
     """Names a tool crop using a local Ollama vision model (e.g. llava)."""
 
-    def __init__(self, base_url: str, model: str):
+    def __init__(self, base_url: str, model: str, keep_alive: str = OLLAMA_KEEP_ALIVE):
         self.base_url = base_url.rstrip("/")
         self.model = model
+        # how long Ollama keeps the model resident after a request; frees VRAM
+        # when idle. Accepts "5m"/"300s"/"0" (unload now)/"-1" (keep forever).
+        self.keep_alive = keep_alive
 
     async def name(self, image_png: bytes) -> Optional[str]:
         import base64
@@ -179,7 +182,7 @@ class OllamaToolNamer:
                     "messages": [{"role": "user", "content": LOCAL_NAME_PROMPT, "images": [b64]}],
                     "stream": False,
                     "options": options,
-                    "keep_alive": OLLAMA_KEEP_ALIVE,
+                    "keep_alive": self.keep_alive,
                 })
                 if resp.status_code >= 400:
                     logger.warning(
@@ -192,7 +195,7 @@ class OllamaToolNamer:
                         "images": [b64],
                         "stream": False,
                         "options": options,
-                        "keep_alive": OLLAMA_KEEP_ALIVE,
+                        "keep_alive": self.keep_alive,
                     })
                 if resp.status_code >= 400:
                     logger.warning(
@@ -230,7 +233,7 @@ class OllamaToolNamer:
             async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
                 await client.post(f"{self.base_url}/api/generate", json={
                     "model": self.model,
-                    "keep_alive": OLLAMA_KEEP_ALIVE,
+                    "keep_alive": self.keep_alive,
                 })
             logger.info("ollama warm-load requested (model=%r)", self.model)
         except Exception as e:
@@ -278,6 +281,7 @@ def get_tool_namer(api_key: Optional[str] = None) -> Optional[ToolNamer]:
         return OllamaToolNamer(
             app_config.effective("ollama_base_url"),
             app_config.effective("ollama_label_model"),
+            keep_alive=app_config.effective("ollama_keep_alive") or OLLAMA_KEEP_ALIVE,
         )
     return None
 
