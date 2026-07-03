@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     # :32b ~21GB for a bigger GPU. llava also works but is weaker.
     ollama_base_url: Optional[str] = None  # e.g. http://192.168.2.78:11434
     ollama_label_model: str = "qwen2.5vl:7b"
+    # how long Ollama keeps the naming model in (V)RAM after the last request.
+    # Accepts an Ollama duration ("5m", "300s", "0" = unload immediately,
+    # "-1" = keep forever). Default 5m so VRAM frees up a few minutes after use.
+    ollama_keep_alive: str = "5m"
     max_upload_mb: int = 20
     log_level: str = "INFO"
     proxy_secret: Optional[str] = None

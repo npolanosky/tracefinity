@@ -130,6 +130,7 @@ export interface AppConfig {
   openrouter_api_key_configured: boolean
   ollama_base_url: string | null
   ollama_label_model: string | null
+  ollama_keep_alive: string | null
   gemini_label_model: string | null
 }
 
